@@ -1,0 +1,25 @@
+{
+  "count": 2,
+  "results": [
+    {
+      "id": "4904188181",
+      "title": "Web Development Internship",
+      "company": { "display_name": "TechCorp Systems" },
+      "location": { "display_name": "Mumbai, India" },
+      "description": "<p>Build web applications with <b>React</b> and JavaScript.</p>",
+      "redirect_url": "http://adzuna.in/r/4904188181",
+      "created": "2026-10-01T10:00:00Z",
+      "category": { "label": "IT Jobs" }
+    },
+    {
+      "id": "4904188182",
+      "title": "Graduate Data Analyst",
+      "company": { "display_name": "Northwind Ltd" },
+      "location": { "display_name": "London, UK" },
+      "description": "Analyse datasets with SQL and Python.",
+      "redirect_url": "https://adzuna.co.uk/r/4904188182",
+      "created": "2026-10-03T09:30:00Z",
+      "category": { "label": "Graduate Jobs" }
+    }
+  ]
+}

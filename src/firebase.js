@@ -97,6 +97,7 @@ if (isConfigured) {
 }
 
 export {
+  app,
   auth,
   db,
   isConfigured,

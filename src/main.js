@@ -53,8 +53,22 @@ import {
   getTaskColorTheme,
   compressImageFile,
   computeTranslucencyValues,
-  filterTasksByDate
+  filterTasksByDate,
+  scoreOpportunity,
+  filterOpportunities,
+  formatTimeAgo
 } from './utils.js';
+import {
+  getUserProfile,
+  saveUserProfile,
+  listenUserProfile,
+  listenOpportunities,
+  listenSavedOpportunities,
+  toggleSavedOpportunity,
+  listenSyncMeta,
+  unsubscribeOpportunityListeners,
+  requestSync
+} from './opportunities.js';
 
 import { renderCoordinatorView } from './views/coordinatorView.js';
 import { renderGuideView } from './views/guideView.js';
@@ -118,7 +132,7 @@ import {
  */
 
 /**
- * @typedef {'schedule' | 'journey' | 'focus' | 'calendar' | 'progress'} ScreenType
+ * @typedef {'schedule' | 'journey' | 'focus' | 'calendar' | 'progress' | 'opportunities'} ScreenType
  */
 
 const state = {
@@ -271,6 +285,20 @@ const state = {
   customBgImage: null,
   /** @type {number} */
   widgetTranslucency: 0,
+
+  // Opportunities section
+  /** @type {any} */
+  profile: null,
+  /** @type {Array<any>} */
+  opportunities: [],
+  /** @type {string[]} */
+  savedOppIds: [],
+  /** @type {Record<string, any>} */
+  syncMeta: {},
+  /** @type {{ type: string, region: string, q: string, savedOnly: boolean, sort: string }} */
+  oppFilters: { type: 'all', region: 'all', q: '', savedOnly: false, sort: 'match' },
+  /** @type {boolean} */
+  showSyncErrors: false,
 };
 
 /**
@@ -383,6 +411,24 @@ function startDataListeners(userId) {
     }
     render();
   });
+
+  // Opportunities section
+  listenUserProfile(userId, (profile) => {
+    state.profile = profile;
+    render();
+  });
+  listenOpportunities((opportunities) => {
+    state.opportunities = opportunities;
+    render();
+  });
+  listenSavedOpportunities(userId, (savedIds) => {
+    state.savedOppIds = savedIds;
+    render();
+  });
+  listenSyncMeta((meta) => {
+    state.syncMeta = meta;
+    render();
+  });
 }
 
 
@@ -481,6 +527,7 @@ async function handleSignOut() {
   try {
     if (!auth) return;
     unsubscribeAll();
+    unsubscribeOpportunityListeners();
     await firebaseSignOut(auth);
     state.goals = [];
     state.tasks = [];
@@ -494,6 +541,12 @@ async function handleSignOut() {
     state.expandedRoadmapGoalIds.clear();
     state.journeyStackIndex = 0;
     applyWidgetTranslucency(0);
+    // Reset opportunities state
+    state.profile = null;
+    state.opportunities = [];
+    state.savedOppIds = [];
+    state.syncMeta = {};
+    state.oppFilters = { type: 'all', region: 'all', q: '', savedOnly: false, sort: 'match' };
   } catch (error) {
     console.error('[PTracker] Sign-out error:', error);
   }
@@ -623,7 +676,7 @@ function render() {
     themeClass = 'theme-orange';
   }
 
-  const customBgStyle = state.customBgImage ? `style="background-image: url('${state.customBgImage}');"` : '';
+  const customBgStyle = state.customBgImage ? `style="background-image: url('${escapeAttr(state.customBgImage)}');"` : '';
   const customBgClass = state.customBgImage ? 'has-custom-bg' : '';
 
   const firstName = state.user.displayName ? state.user.displayName.split(' ')[0] : (state.user.email ? state.user.email.split('@')[0] : 'there');
@@ -645,6 +698,7 @@ function render() {
           <button class="studio-screen-btn ${state.currentScreen === 'focus' ? 'active' : ''}" data-screen="focus">Focus</button>
           <button class="studio-screen-btn ${state.currentScreen === 'calendar' ? 'active' : ''}" data-screen="calendar">Calendar</button>
           <button class="studio-screen-btn ${state.currentScreen === 'progress' ? 'active' : ''}" data-screen="progress">Stats</button>
+          <button class="studio-screen-btn ${state.currentScreen === 'opportunities' ? 'active' : ''}" data-screen="opportunities">Jobs</button>
         </div>
         <div class="role-switcher-container">
           <button class="role-pill-btn ${state.activeRole === 'student' ? 'active' : ''}" data-role="student">Student</button>
@@ -707,6 +761,9 @@ function render() {
           <button class="dock-tab-btn ${state.currentScreen === 'progress' ? 'active' : ''}" data-nav="progress" title="Progress">
             ${icon('progress')}
           </button>
+          <button class="dock-tab-btn ${state.currentScreen === 'opportunities' ? 'active' : ''}" data-nav="opportunities" title="Opportunities">
+            ${icon('briefcase')}
+          </button>
         </nav>
       </div>
     </div>
@@ -718,6 +775,7 @@ function render() {
     ${renderQuoteModal()}
     ${renderBgModal()}
     ${renderManualOverrideModal()}
+    ${renderProfileModal()}
   `;
 
   bindEvents();
@@ -838,6 +896,7 @@ function renderCurrentScreenContent() {
     });
     case 'calendar': return renderCalendarScreen();
     case 'progress': return renderProgressScreen();
+    case 'opportunities': return renderOpportunitiesScreen();
     default: return renderScheduleScreen();
   }
 }
@@ -873,7 +932,7 @@ function renderScheduleScreen() {
     <div class="capsule-row">
       <div class="user-capsule" id="user-capsule-btn">
         <div class="capsule-avatar">
-          ${state.user.photoURL ? `<img src="${state.user.photoURL}" alt="${firstName}" style="width:100%;height:100%;object-fit:cover;" referrerpolicy="no-referrer" />` : avatarLetter}
+            ${state.user.photoURL ? `<img src="${escapeAttr(state.user.photoURL)}" alt="${escapeAttr(firstName)}" style="width:100%;height:100%;object-fit:cover;" referrerpolicy="no-referrer" />` : avatarLetter}
         </div>
         <div class="capsule-text">
           <span class="capsule-title">Hi ${firstName}</span>
@@ -1462,6 +1521,198 @@ function renderProgressScreen() {
 }
 
 // ============================================================
+// 6. OPPORTUNITIES SCREEN (SCRAPED INTERNSHIPS & JOBS)
+// ============================================================
+
+/**
+ * Whether the user's career profile has enough info for matching
+ * @returns {boolean}
+ */
+function hasCareerProfile() {
+  const p = state.profile;
+  return Boolean(p && ((p.skills && p.skills.length > 0) || p.degree));
+}
+
+/**
+ * "Last synced" summary across all scraper sources
+ * @returns {{ label: string, sources: number, failed: number }}
+ */
+function getSyncSummary() {
+  const entries = Object.values(state.syncMeta || {});
+  const newest = entries.reduce((max, m) => Math.max(max, m.lastRunAtMs || 0), 0);
+  const failed = entries.filter(m => m.ok === false).length;
+  return {
+    label: newest ? `Synced ${formatTimeAgo(newest)}` : 'Never synced',
+    sources: entries.length,
+    failed
+  };
+}
+
+/**
+ * Result list HTML (extracted so the search box can update it without
+ * re-rendering the whole screen and losing input focus)
+ * @returns {string}
+ */
+function renderOppResultsHtml() {
+  const filtered = filterOpportunities(
+    state.opportunities,
+    state.oppFilters,
+    state.savedOppIds,
+    state.profile
+  );
+
+  if (state.opportunities.length === 0) {
+    return `
+      <div class="empty-state-modern">
+        <div class="empty-state-icon">${icon('briefcase')}</div>
+        <div class="empty-state-title">No Opportunities Yet</div>
+        <p class="empty-state-text">Listings sync automatically every 6 hours via GitHub Actions. You can also trigger one now: repo → Actions → "Sync opportunities" → Run workflow.</p>
+      </div>
+    `;
+  }
+
+  if (filtered.length === 0) {
+    return `
+      <div class="empty-state-modern" style="padding: 24px;">
+        <p class="empty-state-text">No matches for the current filters.</p>
+      </div>
+    `;
+  }
+
+  return filtered.map((opp, idx) => renderOppCard(opp, idx)).join('');
+}
+
+/**
+ * Single opportunity card
+ * @param {any} opp
+ * @param {number} idx
+ * @returns {string}
+ */
+function renderOppCard(opp, idx) {
+  const theme = getTaskColorTheme(idx);
+  const { score, matchedSkills } = scoreOpportunity(state.profile, opp);
+  const isSaved = state.savedOppIds.includes(opp.id);
+  const safeUrl = /^https?:\/\//i.test(opp.applyUrl || '') ? escapeAttr(opp.applyUrl) : '#';
+  const scoreClass = score >= 60 ? 'high' : (score >= 35 ? 'mid' : 'low');
+  const typeLabel = opp.type === 'internship' ? 'Internship' : 'Job';
+
+  return `
+    <div class="opp-card ${theme.bgClass}">
+      <div class="opp-score-badge ${scoreClass}">
+        <span class="opp-score-num">${score}%</span>
+        <span class="opp-score-label">match</span>
+      </div>
+
+      <div class="opp-card-content">
+        <div class="opp-card-title">${escapeHtml(opp.title)}</div>
+        <div class="opp-card-company">${escapeHtml(opp.company)}</div>
+        <div class="opp-card-meta">
+          <span class="opp-type-pill ${opp.type === 'internship' ? 'is-internship' : ''}">${typeLabel}</span>
+          ${opp.location ? `<span class="opp-meta-item">${icon('pin')} ${escapeHtml(opp.location)}</span>` : ''}
+          ${opp.region === 'india' ? `<span class="opp-region-pill">India</span>` : ''}
+          <span class="opp-source-pill">${escapeHtml(opp.source || 'web')}</span>
+          ${opp.postedAtMs ? `<span class="opp-meta-item">${formatTimeAgo(opp.postedAtMs)}</span>` : ''}
+        </div>
+        ${matchedSkills.length > 0 ? `
+          <div class="opp-tags-row">
+            ${matchedSkills.slice(0, 4).map(s => `<span class="opp-tag-chip">${escapeHtml(s)}</span>`).join('')}
+          </div>
+        ` : (opp.tags && opp.tags.length > 0 ? `
+          <div class="opp-tags-row">
+            ${opp.tags.slice(0, 4).map(t => `<span class="opp-tag-chip">${escapeHtml(t)}</span>`).join('')}
+          </div>
+        ` : '')}
+      </div>
+
+      <div class="opp-card-actions">
+        <button class="opp-save-btn ${isSaved ? 'active' : ''}" data-toggle-save="${opp.id}" title="${isSaved ? 'Remove bookmark' : 'Save opportunity'}">
+          ${icon('heart')}
+        </button>
+        <a class="btn-pill btn-pill-primary opp-apply-btn" href="${safeUrl}" target="_blank" rel="noopener noreferrer">
+          Apply ${icon('external')}
+        </a>
+      </div>
+    </div>
+  `;
+}
+
+function renderOpportunitiesScreen() {
+  const hasProfile = hasCareerProfile();
+  const sync = getSyncSummary();
+  const profileLabel = hasProfile
+    ? [state.profile.degree, state.profile.branch].filter(Boolean).join(' · ')
+    : 'Add your degree & skills for match scores';
+  const f = state.oppFilters;
+
+  return `
+    <div class="opp-profile-row">
+      <button class="opp-profile-chip" id="opp-edit-profile-btn" type="button">
+        <span class="opp-profile-icon">${icon('user')}</span>
+        <span class="opp-profile-text">
+          <span class="opp-profile-title">${escapeHtml(profileLabel)}</span>
+          <span class="opp-profile-sub">${hasProfile ? `${(state.profile.skills || []).length} skills` : 'Tap to set up'}</span>
+        </span>
+        ${icon('edit')}
+      </button>
+      <button class="btn-pill btn-pill-ghost opp-sync-btn" id="opp-sync-btn" type="button">
+        ${icon('sync')} Sync
+      </button>
+    </div>
+
+    <div class="opp-sync-info">
+      <span
+        id="opp-sync-details-toggle"
+        style="cursor:pointer;text-decoration:underline dotted;"
+        title="Tap to see per-source sync details"
+      >${sync.label} · ${sync.sources} sources${sync.failed > 0 ? ` · ${sync.failed} failed` : ''}</span>
+    </div>
+    ${state.showSyncErrors ? `
+      <div class="opp-sync-errors">
+        ${Object.entries(state.syncMeta)
+          .sort(([, a], [, b]) => (a.ok === false ? -1 : 0) - (b.ok === false ? -1 : 0))
+          .map(([id, m]) => {
+            const status = m.ok === false
+              ? `<strong>failed</strong>`
+              : (m.skipped ? `skipped (${escapeHtml(m.skipped)})` : `${m.count ?? 0} listings`);
+            const err = m.ok === false ? ` — ${escapeHtml((m.error || 'error').slice(0, 100))}` : '';
+            return `<div class="opp-sync-error-item"><strong>${escapeHtml(id)}</strong>: ${status}${err}</div>`;
+          })
+          .join('')}
+      </div>
+    ` : ''}
+
+    <div class="opp-search-wrap">
+      ${icon('search')}
+      <input type="search" id="opp-search" class="form-input-pill opp-search-input"
+        placeholder="Search title, company, skill…" value="${escapeAttr(f.q)}" autocomplete="off" />
+    </div>
+
+    <div class="opp-filter-row">
+      <button class="opp-filter-chip ${f.type === 'all' ? 'active' : ''}" data-opp-type="all" type="button">All</button>
+      <button class="opp-filter-chip ${f.type === 'internship' ? 'active' : ''}" data-opp-type="internship" type="button">Internships</button>
+      <button class="opp-filter-chip ${f.type === 'fulltime' ? 'active' : ''}" data-opp-type="fulltime" type="button">Jobs</button>
+      <span class="opp-filter-divider"></span>
+      <button class="opp-filter-chip ${f.region === 'all' ? 'active' : ''}" data-opp-region="all" type="button">Everywhere</button>
+      <button class="opp-filter-chip ${f.region === 'india' ? 'active' : ''}" data-opp-region="india" type="button">India</button>
+      <button class="opp-filter-chip ${f.region === 'global' ? 'active' : ''}" data-opp-region="global" type="button">Global</button>
+      <span class="opp-filter-divider"></span>
+      <button class="opp-filter-chip ${f.sort === 'match' ? 'active' : ''}" data-opp-sort="match" type="button">Best match</button>
+      <button class="opp-filter-chip ${f.sort === 'newest' ? 'active' : ''}" data-opp-sort="newest" type="button">Newest</button>
+      <span class="opp-filter-divider"></span>
+      <button class="opp-filter-chip ${f.savedOnly ? 'active' : ''}" id="opp-saved-toggle" type="button">${icon('heart')} Saved (${state.savedOppIds.length})</button>
+    </div>
+
+    <div class="tasks-stack-section">
+      <div class="section-eyebrow">
+        <span>Opportunities</span>
+        <span class="section-eyebrow-count" id="opp-count">${filterOpportunities(state.opportunities, f, state.savedOppIds, state.profile).length} shown</span>
+      </div>
+      <div id="opp-results">${renderOppResultsHtml()}</div>
+    </div>
+  `;
+}
+
+// ============================================================
 // MODALS
 // ============================================================
 
@@ -1542,7 +1793,7 @@ function renderSettingsModal() {
         <!-- User Profile Pill -->
         <div style="display:flex; align-items:center; gap: 14px; padding: 12px; background: var(--clr-noir-surface); border-radius: var(--radius-md);">
           <div class="capsule-avatar" style="width:48px;height:48px;">
-            ${state.user?.photoURL ? `<img src="${state.user.photoURL}" alt="User" style="width:100%;height:100%;object-fit:cover;" referrerpolicy="no-referrer" />` : (state.user?.displayName || 'U').charAt(0).toUpperCase()}
+            ${state.user?.photoURL ? `<img src="${escapeAttr(state.user.photoURL)}" alt="User" style="width:100%;height:100%;object-fit:cover;" referrerpolicy="no-referrer" />` : (state.user?.displayName || 'U').charAt(0).toUpperCase()}
           </div>
           <div style="display:flex; flex-direction:column; overflow:hidden;">
             <span style="font-weight:700;font-size:1rem;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${state.user?.displayName || state.user?.email || 'Guest User'}</span>
@@ -1583,6 +1834,9 @@ function renderSettingsModal() {
           ` : ''}
           <button class="btn-pill btn-pill-ghost" id="settings-quote-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;">
             ${icon('quote')} Edit Daily Quote
+          </button>
+          <button class="btn-pill btn-pill-ghost" id="settings-profile-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;">
+            ${icon('briefcase')} Edit Career Profile
           </button>
         </div>
 
@@ -1647,6 +1901,68 @@ function renderBgModal() {
         <div class="modal-footer-custom" style="flex-wrap: wrap;">
           <button class="btn-pill btn-pill-ghost" id="bg-reset-btn" type="button" style="color:var(--clr-danger);">Reset to Default</button>
           <button class="btn-pill btn-pill-primary" id="bg-save-btn" type="button">Apply Image</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderProfileModal() {
+  const p = state.profile || {};
+  const degrees = ['B.Tech / B.E.', 'B.Sc', 'BCA', 'B.Com', 'M.Tech / M.E.', 'MCA', 'M.Sc', 'MBA', 'Other'];
+  return `
+    <div class="modal-overlay-custom" id="profile-modal-overlay">
+      <div class="modal-panel-custom">
+        <div class="modal-header-custom">
+          <h3 class="modal-title-custom">Career Profile</h3>
+          <button class="modal-close-custom" id="profile-modal-close">${icon('close')}</button>
+        </div>
+        <p style="font-size: 0.72rem; color: var(--text-secondary-light); margin-bottom: 10px;">
+          Powers your match scores on the Opportunities screen. Nothing leaves your account.
+        </p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group-custom">
+            <label class="form-label-custom" for="profile-degree-input">Degree</label>
+            <select class="form-input-pill" id="profile-degree-input">
+              <option value="">Select…</option>
+              ${degrees.map(d => `<option value="${d}" ${p.degree === d ? 'selected' : ''}>${d}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group-custom">
+            <label class="form-label-custom" for="profile-branch-input">Branch / Field</label>
+            <input class="form-input-pill" id="profile-branch-input" placeholder="e.g., Computer Science" value="${escapeAttr(p.branch || '')}" />
+          </div>
+        </div>
+
+        <div class="form-group-custom">
+          <label class="form-label-custom" for="profile-gradyear-input">Graduation Year</label>
+          <input class="form-input-pill" id="profile-gradyear-input" type="number" min="2020" max="2040" placeholder="e.g., 2027" value="${escapeAttr(p.gradYear || '')}" />
+        </div>
+
+        <div class="form-group-custom">
+          <label class="form-label-custom" for="profile-skills-input">Skills <span style="opacity:0.6;">(comma separated)</span></label>
+          <textarea class="form-input-pill" id="profile-skills-input" rows="2" placeholder="e.g., JavaScript, React, Python, SQL">${escapeHtml((p.skills || []).join(', '))}</textarea>
+        </div>
+
+        <div class="form-group-custom">
+          <label class="form-label-custom" for="profile-roles-input">Preferred Roles <span style="opacity:0.6;">(comma separated)</span></label>
+          <input class="form-input-pill" id="profile-roles-input" placeholder="e.g., Frontend Developer, Data Analyst" value="${escapeAttr((p.preferredRoles || []).join(', '))}" />
+        </div>
+
+        <div class="form-group-custom">
+          <label class="form-label-custom" for="profile-interests-input">Interests <span style="opacity:0.6;">(comma separated)</span></label>
+          <input class="form-input-pill" id="profile-interests-input" placeholder="e.g., AI/ML, Web Dev, Cloud" value="${escapeAttr((p.interests || []).join(', '))}" />
+        </div>
+
+        <div class="form-group-custom">
+          <label class="form-label-custom" for="profile-locations-input">Preferred Locations <span style="opacity:0.6;">(comma separated, or "Remote")</span></label>
+          <input class="form-input-pill" id="profile-locations-input" placeholder="e.g., Pune, Bengaluru, Remote" value="${escapeAttr((p.preferredLocations || []).join(', '))}" />
+        </div>
+
+        <div class="modal-footer-custom">
+          <button class="btn-pill btn-pill-ghost" id="profile-modal-cancel">Cancel</button>
+          <button class="btn-pill btn-pill-primary" id="profile-modal-save">Save Profile</button>
         </div>
       </div>
     </div>
@@ -2630,6 +2946,145 @@ function bindEvents() {
     });
   });
 
+  // ─── Opportunities screen events ───────────────────────
+
+  // Career Profile modal open/close/save
+  const openProfileModal = () => {
+    document.getElementById('profile-modal-overlay')?.classList.add('open');
+    document.getElementById('profile-degree-input')?.focus();
+  };
+
+  const closeProfileModal = () => {
+    document.getElementById('profile-modal-overlay')?.classList.remove('open');
+  };
+
+  document.getElementById('opp-edit-profile-btn')?.addEventListener('click', openProfileModal);
+  document.getElementById('settings-profile-btn')?.addEventListener('click', () => {
+    state.settingsOpen = false;
+    render();
+    openProfileModal();
+  });
+  document.getElementById('profile-modal-close')?.addEventListener('click', closeProfileModal);
+  document.getElementById('profile-modal-cancel')?.addEventListener('click', closeProfileModal);
+
+  document.getElementById('profile-modal-save')?.addEventListener('click', async () => {
+    const parseList = (id) => {
+      const el = /** @type {HTMLInputElement|HTMLTextAreaElement|null} */ (document.getElementById(id));
+      return (el?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+    };
+    const degreeEl = /** @type {HTMLSelectElement|null} */ (document.getElementById('profile-degree-input'));
+    const gradYearEl = /** @type {HTMLInputElement|null} */ (document.getElementById('profile-gradyear-input'));
+    const profile = {
+      degree: degreeEl?.value || '',
+      branch: (/** @type {HTMLInputElement|null} */ (document.getElementById('profile-branch-input')))?.value.trim() || '',
+      gradYear: gradYearEl?.value || '',
+      skills: parseList('profile-skills-input'),
+      preferredRoles: parseList('profile-roles-input'),
+      interests: parseList('profile-interests-input'),
+      preferredLocations: parseList('profile-locations-input'),
+    };
+    try {
+      await saveUserProfile(state.user.uid, profile);
+      state.profile = { ...(state.profile || {}), ...profile };
+      showToast('Career profile saved', 'success');
+      closeProfileModal();
+      render();
+    } catch (err) {
+      console.error('[PTracker] Save profile error:', err);
+      showToast('Failed to save profile', 'error');
+    }
+  });
+
+  // Manual sync trigger — only works with Cloud Functions deployed
+  // (the free GitHub Actions path syncs on a schedule instead). After a
+  // failure we back off for an hour so the dead endpoint isn't hammered.
+  const SYNC_UNAVAILABLE_KEY = 'ptracker_sync_unavailable_at';
+  const handleSyncNow = async () => {
+    const lastFail = Number(localStorage.getItem(SYNC_UNAVAILABLE_KEY) || 0);
+    if (Date.now() - lastFail < 3600000) {
+      showToast('In-app sync needs Cloud Functions — listings sync every 6h via GitHub Actions.', 'info');
+      return;
+    }
+    const btn = document.getElementById('opp-sync-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+    showToast('Syncing 20+ sources — this can take a minute…');
+    try {
+      await requestSync();
+      localStorage.removeItem(SYNC_UNAVAILABLE_KEY);
+      showToast('Sync finished — listings refreshed', 'success');
+    } catch (err) {
+      console.error('[PTracker] Sync error:', err);
+      localStorage.setItem(SYNC_UNAVAILABLE_KEY, String(Date.now()));
+      showToast('In-app sync unavailable — listings sync every 6h via GitHub Actions.', 'info');
+    } finally {
+      render();
+    }
+  };
+  document.getElementById('opp-sync-btn')?.addEventListener('click', handleSyncNow);
+
+  // Failed-source detail toggle
+  document.getElementById('opp-sync-details-toggle')?.addEventListener('click', () => {
+    state.showSyncErrors = !state.showSyncErrors;
+    render();
+  });
+
+  // Search box: filter without full re-render (keeps typing focus)
+  document.getElementById('opp-search')?.addEventListener('input', (e) => {
+    state.oppFilters.q = /** @type {HTMLInputElement} */ (e.target).value;
+    const results = document.getElementById('opp-results');
+    if (results) results.innerHTML = renderOppResultsHtml();
+    const count = document.getElementById('opp-count');
+    if (count) {
+      count.textContent = `${filterOpportunities(state.opportunities, state.oppFilters, state.savedOppIds, state.profile).length} shown`;
+    }
+  });
+
+  // Filter chips
+  document.querySelectorAll('[data-opp-type]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.oppFilters.type = el.getAttribute('data-opp-type') || 'all';
+      render();
+    });
+  });
+  document.querySelectorAll('[data-opp-region]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.oppFilters.region = el.getAttribute('data-opp-region') || 'all';
+      render();
+    });
+  });
+  document.querySelectorAll('[data-opp-sort]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.oppFilters.sort = el.getAttribute('data-opp-sort') || 'match';
+      render();
+    });
+  });
+  document.getElementById('opp-saved-toggle')?.addEventListener('click', () => {
+    state.oppFilters.savedOnly = !state.oppFilters.savedOnly;
+    render();
+  });
+
+  // Bookmark toggle — delegated so partial result re-renders keep working
+  const screenBody = document.getElementById('screen-body');
+  if (screenBody) {
+    screenBody.addEventListener('click', async (e) => {
+      const target = /** @type {HTMLElement} */ (e.target);
+      const saveBtn = target.closest('[data-toggle-save]');
+      if (!saveBtn) return;
+      e.stopPropagation();
+      const oppId = saveBtn.getAttribute('data-toggle-save');
+      const opp = state.opportunities.find(o => o.id === oppId);
+      if (!opp || !state.user) return;
+      const nowSaved = !state.savedOppIds.includes(oppId);
+      try {
+        await toggleSavedOpportunity(state.user.uid, opp, nowSaved);
+        showToast(nowSaved ? 'Saved to bookmarks' : 'Removed from bookmarks');
+      } catch (err) {
+        console.error('[PTracker] Toggle save error:', err);
+        showToast('Failed to update bookmark', 'error');
+      }
+    });
+  }
+
   // Goal Modal events
   document.getElementById('goal-modal-close')?.addEventListener('click', closeGoalModal);
   document.getElementById('goal-modal-cancel')?.addEventListener('click', closeGoalModal);
@@ -2797,4 +3252,20 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+/**
+ * Escape a value for use inside an HTML attribute (URLs, etc.) —
+ * unlike escapeHtml, this also escapes quotes so it can't break out
+ * of src="…"/href="…" contexts.
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeAttr(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

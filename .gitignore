@@ -14,6 +14,17 @@ dist
 dist-ssr
 *.local
 
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+functions/node_modules/
+functions/.env
+
+# Generated service worker (vite-plugin-pwa dev output)
+dev-dist/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
