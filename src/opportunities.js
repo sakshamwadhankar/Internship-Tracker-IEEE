@@ -137,7 +137,9 @@ export function listenOpportunities(callback) {
   const q = query(
     collection(db, 'opportunities'),
     orderBy('fetchedAt', 'desc'),
-    limit(300)
+    // Free-tier Firestore quota counts every document read; 120 keeps the
+    // listing feed healthy without burning the daily 50k-read allowance.
+    limit(120)
   );
   const unsub = onSnapshot(q, (snapshot) => {
     /** @type {Array<{id: string, [key: string]: any}>} */
