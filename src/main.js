@@ -56,6 +56,38 @@ import {
   filterTasksByDate
 } from './utils.js';
 
+import { renderCoordinatorView } from './views/coordinatorView.js';
+import { renderGuideView } from './views/guideView.js';
+import { renderPanelView } from './views/panelView.js';
+import { renderFocusView } from './views/focusView.js';
+import { renderJourneyView } from './views/journeyView.js';
+
+import {
+  runCapacitatedAllocation,
+  applyManualOverride,
+  calculateSatisfactionStats
+} from './modules/allocation.js';
+import {
+  generateConflictFreeSchedule,
+  proposeRescheduleSlot,
+  checkDeliverableGateStatus
+} from './modules/reviewScheduler.js';
+import {
+  generateHeatmapMatrix,
+  evaluateAtRiskRules
+} from './modules/progressRadar.js';
+import {
+  calculateReviewStreak,
+  computeLeaderboardRankings,
+  calculateSubjectBreakdown
+} from './modules/focusPlanner.js';
+import {
+  calculateInternshipCredits,
+  approveByGuide,
+  approveByCoordinator,
+  rejectInternship
+} from './modules/internship.js';
+
 
 // ─── App State ──────────────────────────────────────────
 
@@ -94,6 +126,122 @@ const state = {
   user: null,
   /** @type {ScreenType} */
   currentScreen: 'schedule',
+  /** @type {'student' | 'coordinator' | 'guide' | 'panel'} */
+  activeRole: 'student',
+  /** @type {string} */
+  coordinatorSubTab: 'allocation',
+  /** @type {string} */
+  guideSubTab: 'teams',
+  /** @type {string} */
+  journeySubTab: 'hub',
+  /** @type {string} */
+  focusSubTab: 'timer',
+  /** @type {string} */
+  selectedGuideUid: 'g1',
+  /** @type {string|null} */
+  panelSelectedReviewId: null,
+
+  activeFocusTimer: {
+    isRunning: false,
+    elapsedSeconds: 0,
+    timerInterval: null,
+    activeSubjectId: 'sub_1'
+  },
+
+  overrideModal: {
+    open: false,
+    teamId: null,
+    teamName: ''
+  },
+
+  // v2 Collections & Department Data
+  teams: [
+    { id: 't1', name: 'Team Alpha (Vision AI)', domain: 'AI & ML', memberUids: ['m1', 'm2'], rankedGuideUids: ['g1', 'g2', 'g4'], submittedAtMillis: 1000 },
+    { id: 't2', name: 'Team Beta (Cloud Fabric)', domain: 'Cloud & Systems', memberUids: ['m3', 'm4'], rankedGuideUids: ['g2', 'g1', 'g3'], submittedAtMillis: 2000 },
+    { id: 't3', name: 'Team Gamma (Crypto Shield)', domain: 'Cybersecurity', memberUids: ['m5'], rankedGuideUids: ['g3', 'g4', 'g1'], submittedAtMillis: 3000 },
+    { id: 't4', name: 'Team Delta (DevOps Mesh)', domain: 'Software Eng', memberUids: ['m6', 'm7'], rankedGuideUids: ['g4', 'g2', 'g1'], submittedAtMillis: 4000 },
+    { id: 't5', name: 'Team Epsilon (Edge ML)', domain: 'AI & ML', memberUids: ['m8'], rankedGuideUids: ['g1', 'g4', 'g3'], submittedAtMillis: 5000 }
+  ],
+  guides: [
+    { uid: 'g1', name: 'Dr. Alan Turing', loadLimit: 2, researchAreas: ['AI & ML', 'Computer Vision'] },
+    { uid: 'g2', name: 'Dr. Ada Lovelace', loadLimit: 2, researchAreas: ['Cloud & Systems', 'Distributed Computing'] },
+    { uid: 'g3', name: 'Dr. Claude Shannon', loadLimit: 2, researchAreas: ['Cybersecurity', 'Networks'] },
+    { uid: 'g4', name: 'Dr. Grace Hopper', loadLimit: 2, researchAreas: ['Software Eng', 'Compilers'] }
+  ],
+  preLockedPairs: [
+    { teamId: 't3', guideUid: 'g3', reason: 'Industry grant sponsored project' }
+  ],
+  allocations: [],
+  panels: [
+    { id: 'Panel 1', name: 'AI & Systems Committee', memberUids: ['fac_turing', 'fac_lovelace'] },
+    { id: 'Panel 2', name: 'Security & Software Committee', memberUids: ['fac_shannon', 'fac_hopper'] }
+  ],
+  rooms: ['Lab 101', 'Seminar Hall A', 'Innovation Center'],
+  timeSlots: [
+    { id: 'slot_1', date: '2026-11-05', startTime: '10:00', endTime: '10:30', startMillis: 1793845200000, durationMin: 30 },
+    { id: 'slot_2', date: '2026-11-05', startTime: '10:30', endTime: '11:00', startMillis: 1793847000000, durationMin: 30 },
+    { id: 'slot_3', date: '2026-11-05', startTime: '11:00', endTime: '11:30', startMillis: 1793848800000, durationMin: 30 },
+    { id: 'slot_4', date: '2026-11-05', startTime: '11:30', endTime: '12:00', startMillis: 1793850600000, durationMin: 30 },
+    { id: 'slot_5', date: '2026-11-05', startTime: '12:00', endTime: '12:30', startMillis: 1793852400000, durationMin: 30 }
+  ],
+  reviews: [],
+  logbooks: [
+    { id: 'log_1', teamId: 't1', weekNumber: 1, workDone: 'Literature survey on YOLOv8 & dataset curation', hoursSpent: 14, status: 'approved', guideRemarks: 'Good foundation' },
+    { id: 'log_2', teamId: 't1', weekNumber: 2, workDone: 'Model pipeline setup & baseline evaluation', hoursSpent: 16, status: 'approved', guideRemarks: 'Proceed to fine tuning' },
+    { id: 'log_3', teamId: 't1', weekNumber: 3, workDone: 'Edge optimization & TensorRT quantization', hoursSpent: 12, status: 'submitted' },
+    { id: 'log_4', teamId: 't2', weekNumber: 1, workDone: 'Kubernetes cluster provisioning on GCP', hoursSpent: 15, status: 'approved' },
+    { id: 'log_5', teamId: 't2', weekNumber: 2, workDone: 'Ingress controller & TLS certificate automation', hoursSpent: 14, status: 'approved' }
+  ],
+  documents: [
+    { id: 'doc_1', teamId: 't1', type: 'synopsis', fileName: 'vision_ai_synopsis_v1.pdf', version: 1, status: 'coordinator_approved', uploadedAtMillis: Date.now() - 20 * 86400000 },
+    { id: 'doc_2', teamId: 't1', type: 'srs', fileName: 'vision_ai_architecture_v1.pdf', version: 1, status: 'guide_approved', uploadedAtMillis: Date.now() - 10 * 86400000 },
+    { id: 'doc_3', teamId: 't2', type: 'synopsis', fileName: 'cloud_fabric_synopsis_v1.pdf', version: 1, status: 'coordinator_approved', uploadedAtMillis: Date.now() - 20 * 86400000 }
+  ],
+  internships: [
+    {
+      id: 'intern_1',
+      studentUid: 'm1',
+      studentName: 'Alice Sharma',
+      company: 'Google',
+      role: 'Software Engineering Intern',
+      mentorName: 'Dr. Turing',
+      startDate: '2026-06-01',
+      endDate: '2026-08-01',
+      durationWeeks: 8,
+      status: 'guide_approved',
+      approvals: { guide: { approvedBy: 'g1', approvedAtMillis: Date.now() } },
+      creditsEarned: 4
+    }
+  ],
+  focusSubjects: [
+    { id: 'sub_1', ownerUid: 'guest', name: 'FYP — Backend & ML', colorCode: '#FF6420' },
+    { id: 'sub_2', ownerUid: 'guest', name: 'Distributed Systems', colorCode: '#3B82F6' },
+    { id: 'sub_3', ownerUid: 'guest', name: 'Internship Work', colorCode: '#2CD674' }
+  ],
+  focusSessions: [
+    { id: 'fs_1', uid: 'm1', teamId: 't1', subjectId: 'sub_1', durationMin: 90, endedAtMillis: Date.now() - 3600000, mode: 'stopwatch' },
+    { id: 'fs_2', uid: 'm1', teamId: 't1', subjectId: 'sub_1', durationMin: 120, endedAtMillis: Date.now() - 86400000, mode: 'stopwatch' },
+    { id: 'fs_3', uid: 'm2', teamId: 't1', subjectId: 'sub_1', durationMin: 75, endedAtMillis: Date.now() - 86400000, mode: 'stopwatch' }
+  ],
+  dailyPlans: [
+    {
+      date: new Date().toISOString().split('T')[0],
+      reviewed: false,
+      todos: [
+        { id: '1', title: 'Complete TensorRT model benchmarking', done: true, plannedMin: 45 },
+        { id: '2', title: 'Draft weekly logbook entry', done: false, plannedMin: 15 },
+        { id: '3', title: 'Upload PPT slides for Review 1', done: false, plannedMin: 30 }
+      ],
+      reflection: ''
+    }
+  ],
+  allUsers: [
+    { uid: 'm1', name: 'Alice Sharma', privacy: 'public', teamId: 't1' },
+    { uid: 'm2', name: 'Bob Verma', privacy: 'team', teamId: 't1' },
+    { uid: 'm3', name: 'Charlie Patel', privacy: 'public', teamId: 't2' },
+    { uid: 'm4', name: 'Dave Rao', privacy: 'private', teamId: 't2' }
+  ],
+
   /** @type {Goal[]} */
   goals: [],
   /** @type {Task[]} */
@@ -114,7 +262,6 @@ const state = {
   journeyStackIndex: 0,
   /** @type {boolean} */
   settingsOpen: false,
-
 
   /** @type {string} */
   quote: 'Focus on progress, not perfection.',
@@ -144,6 +291,37 @@ let appEl;
 
 document.addEventListener('DOMContentLoaded', () => {
   appEl = /** @type {HTMLElement} */ (document.getElementById('app'));
+
+  // Initialize algorithmic state for baseline evaluation
+  if (state.allocations.length === 0) {
+    try {
+      const autoAlloc = runCapacitatedAllocation({
+        teams: state.teams,
+        guides: state.guides,
+        preLockedPairs: state.preLockedPairs
+      });
+      state.allocations = autoAlloc.allocations;
+    } catch (err) {
+      console.warn('[PTracker] Initial allocation computation skipped:', err);
+    }
+  }
+
+  if (state.reviews.length === 0) {
+    try {
+      const autoSched = generateConflictFreeSchedule({
+        teams: state.teams,
+        panels: state.panels,
+        rooms: state.rooms,
+        timeSlots: state.timeSlots,
+        round: 1,
+        cycleId: '2026_fall'
+      });
+      state.reviews = autoSched.schedule;
+    } catch (err) {
+      console.warn('[PTracker] Initial schedule generation skipped:', err);
+    }
+  }
+
   renderLoading();
 
   if (!isConfigured || !auth) {
@@ -452,7 +630,7 @@ function render() {
     <div class="studio-wrapper">
       <div class="studio-backdrop-accent"></div>
 
-      <!-- Studio Header with Screen Switcher (for desktop and presentation) -->
+      <!-- Studio Header with Screen Switcher & Role Switcher -->
       <header class="studio-header">
         <div class="studio-logo">
           <span class="studio-logo-icon">${icon('appLogo')}</span>
@@ -465,25 +643,33 @@ function render() {
           <button class="studio-screen-btn ${state.currentScreen === 'calendar' ? 'active' : ''}" data-screen="calendar">Calendar</button>
           <button class="studio-screen-btn ${state.currentScreen === 'progress' ? 'active' : ''}" data-screen="progress">Stats</button>
         </div>
+        <div class="role-switcher-container">
+          <button class="role-pill-btn ${state.activeRole === 'student' ? 'active' : ''}" data-role="student">Student</button>
+          <button class="role-pill-btn ${state.activeRole === 'coordinator' ? 'active' : ''}" data-role="coordinator">Coordinator</button>
+          <button class="role-pill-btn ${state.activeRole === 'guide' ? 'active' : ''}" data-role="guide">Guide</button>
+          <button class="role-pill-btn ${state.activeRole === 'panel' ? 'active' : ''}" data-role="panel">Panel</button>
+        </div>
       </header>
 
       <!-- Main Mobile Shell Container -->
       <div class="phone-shell ${themeClass} ${customBgClass}" id="phone-shell" ${customBgStyle}>
-        <!-- Top Navigation Bar (Clean header without fake status bar or time) -->
+        <!-- Top Navigation Bar -->
         <div class="screen-nav-bar">
           <button class="nav-bar-btn" id="nav-back-btn" title="Back">
             ${icon('chevronLeft')}
           </button>
+          <div class="role-switcher-container" style="transform: scale(0.88);">
+            <button class="role-pill-btn ${state.activeRole === 'student' ? 'active' : ''}" data-role="student">Student</button>
+            <button class="role-pill-btn ${state.activeRole === 'coordinator' ? 'active' : ''}" data-role="coordinator">Coord</button>
+            <button class="role-pill-btn ${state.activeRole === 'guide' ? 'active' : ''}" data-role="guide">Guide</button>
+            <button class="role-pill-btn ${state.activeRole === 'panel' ? 'active' : ''}" data-role="panel">Panel</button>
+          </div>
           <div class="nav-bar-actions">
             <button class="nav-bar-btn" id="nav-settings-btn" title="Settings">
               ${icon('settings')}
             </button>
-            <button class="nav-bar-btn" id="nav-close-btn" title="Close / Switch">
-              ${icon('close')}
-            </button>
           </div>
         </div>
-
 
         <!-- Scrollable Screen Content Body -->
         <div class="screen-body" id="screen-body">
@@ -517,9 +703,56 @@ function render() {
     ${renderSettingsModal()}
     ${renderQuoteModal()}
     ${renderBgModal()}
+    ${renderManualOverrideModal()}
   `;
 
   bindEvents();
+}
+
+/**
+ * Render Manual Override Modal for Coordinator
+ * @returns {string}
+ */
+function renderManualOverrideModal() {
+  if (!state.overrideModal.open) return '';
+
+  const team = state.teams.find(t => t.id === state.overrideModal.teamId);
+  const guideOptions = state.guides.map(g => `
+    <option value="${g.uid}">${g.name} (Capacity Limit: ${g.loadLimit})</option>
+  `).join('');
+
+  return `
+    <div class="override-modal-backdrop" id="override-modal-backdrop">
+      <div class="override-modal-card">
+        <h3 class="override-modal-title">Manual Coordinator Reassignment</h3>
+        <p style="font-size: 0.88rem; color: var(--text-secondary-light); margin-bottom: 16px;">
+          Reassigning <strong>${team ? team.name : state.overrideModal.teamName}</strong>. Coordinator override outranks auto-allocation.
+        </p>
+
+        <div style="margin-bottom: 12px;">
+          <label style="font-size: 0.8rem; color: var(--text-secondary-light); display: block; margin-bottom: 4px;">Target Faculty Guide</label>
+          <select id="modal-target-guide" class="focus-subject-select" style="width: 100%;">
+            ${guideOptions}
+          </select>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="font-size: 0.8rem; color: var(--text-secondary-light); display: block; margin-bottom: 4px;">Justification / Override Reason</label>
+          <input type="text" id="modal-override-reason" placeholder="Required if forcing beyond limit..." style="width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); padding: 8px 14px; border-radius: var(--radius-sm); color: #FFF;" />
+        </div>
+
+        <div style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="modal-force-override" class="planner-checkbox" />
+          <label for="modal-force-override" style="font-size: 0.82rem; color: var(--clr-orange); cursor: pointer;">Force assign even if guide exceeds load limit</label>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button id="modal-cancel-override" class="coord-btn secondary sm">Cancel</button>
+          <button id="modal-confirm-override" class="coord-btn primary sm">${icon('swap')} Confirm Override</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 /**
@@ -527,10 +760,68 @@ function render() {
  * @returns {string}
  */
 function renderCurrentScreenContent() {
+  if (state.activeRole === 'coordinator') {
+    return renderCoordinatorView({
+      teams: state.teams,
+      guides: state.guides,
+      allocations: state.allocations,
+      preLockedPairs: state.preLockedPairs,
+      reviews: state.reviews,
+      panels: state.panels,
+      rooms: state.rooms,
+      timeSlots: state.timeSlots,
+      logbooks: state.logbooks,
+      documents: state.documents,
+      focusSessions: state.focusSessions,
+      internships: state.internships,
+      activeSubTab: state.coordinatorSubTab,
+      showToast
+    });
+  }
+
+  if (state.activeRole === 'guide') {
+    return renderGuideView({
+      guideUid: state.selectedGuideUid || 'g1',
+      teams: state.teams,
+      allocations: state.allocations,
+      logbooks: state.logbooks,
+      documents: state.documents,
+      internships: state.internships,
+      focusSessions: state.focusSessions,
+      activeSubTab: state.guideSubTab
+    });
+  }
+
+  if (state.activeRole === 'panel') {
+    return renderPanelView({
+      panelUid: 'fac_turing',
+      reviews: state.reviews,
+      teams: state.teams,
+      selectedReviewId: state.panelSelectedReviewId
+    });
+  }
+
+  // Student role screens
   switch (state.currentScreen) {
     case 'schedule': return renderScheduleScreen();
-    case 'journey': return renderJourneyScreen();
-    case 'focus': return renderFocusScreen();
+    case 'journey': return renderJourneyView({
+      myTeam: state.teams[0] || null,
+      guides: state.guides,
+      allocations: state.allocations,
+      logbooks: state.logbooks,
+      documents: state.documents,
+      internships: state.internships,
+      activeSubTab: state.journeySubTab
+    });
+    case 'focus': return renderFocusView({
+      userId: state.user?.uid || 'guest',
+      subjects: state.focusSubjects,
+      sessions: state.focusSessions,
+      dailyPlans: state.dailyPlans,
+      allUsers: state.allUsers,
+      activeSessionState: state.activeFocusTimer,
+      activeSubTab: state.focusSubTab
+    });
     case 'calendar': return renderCalendarScreen();
     case 'progress': return renderProgressScreen();
     default: return renderScheduleScreen();
@@ -1358,6 +1649,496 @@ let editingGoalId = null;
 let editingTaskId = null;
 
 function bindEvents() {
+  // Role Switcher Buttons (Desktop & Mobile)
+  document.querySelectorAll('[data-role]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const role = btn.getAttribute('data-role');
+      if (role) {
+        state.activeRole = /** @type {'student'|'coordinator'|'guide'|'panel'} */ (role);
+        showToast(`Switched view to ${role.toUpperCase()}`);
+        render();
+      }
+    });
+  });
+
+  // Coordinator Subtabs
+  document.querySelectorAll('[data-coord-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-coord-tab');
+      if (tab) {
+        state.coordinatorSubTab = tab;
+        render();
+      }
+    });
+  });
+
+  // Guide Subtabs
+  document.querySelectorAll('[data-guide-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-guide-tab');
+      if (tab) {
+        state.guideSubTab = tab;
+        render();
+      }
+    });
+  });
+
+  // Journey Subtabs
+  document.querySelectorAll('[data-journey-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-journey-tab');
+      if (tab) {
+        state.journeySubTab = tab;
+        render();
+      }
+    });
+  });
+
+  // Focus Subtabs
+  document.querySelectorAll('[data-focus-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-focus-tab');
+      if (tab) {
+        state.focusSubTab = tab;
+        render();
+      }
+    });
+  });
+
+  // Coordinator: Run Fair Auto-Allocation (Gale-Shapley)
+  document.getElementById('btn-run-auto-alloc')?.addEventListener('click', () => {
+    try {
+      const res = runCapacitatedAllocation({
+        teams: state.teams,
+        guides: state.guides,
+        preLockedPairs: state.preLockedPairs
+      });
+      state.allocations = res.allocations;
+      showToast(`Auto-Allocation complete! ${res.stats.firstChoicePercent}% teams received 1st choice.`);
+      render();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  // Coordinator: Publish Allocations
+  document.getElementById('btn-publish-alloc')?.addEventListener('click', () => {
+    showToast('Allocations published! 48h faculty swap window opened.');
+  });
+
+  // Coordinator: Open Manual Override Modal
+  document.querySelectorAll('.btn-open-override').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const teamId = btn.getAttribute('data-team-id');
+      const teamName = btn.getAttribute('data-team-name');
+      state.overrideModal = { open: true, teamId, teamName: teamName || '' };
+      render();
+    });
+  });
+
+  // Coordinator: Manual Override Modal Confirm / Cancel
+  document.getElementById('modal-cancel-override')?.addEventListener('click', () => {
+    state.overrideModal.open = false;
+    render();
+  });
+
+  document.getElementById('modal-confirm-override')?.addEventListener('click', () => {
+    const targetGuideSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('modal-target-guide'));
+    const reasonInput = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-override-reason'));
+    const forceCheckbox = /** @type {HTMLInputElement|null} */ (document.getElementById('modal-force-override'));
+
+    const targetGuideUid = targetGuideSelect?.value;
+    const reason = reasonInput?.value.trim() || '';
+    const force = Boolean(forceCheckbox?.checked);
+
+    if (!targetGuideUid || !state.overrideModal.teamId) {
+      showToast('Select a target guide', 'error');
+      return;
+    }
+
+    try {
+      const res = applyManualOverride({
+        allocations: state.allocations,
+        guides: state.guides,
+        teams: state.teams,
+        teamId: state.overrideModal.teamId,
+        targetGuideUid,
+        actorUid: state.user?.uid || 'coordinator_1',
+        reason,
+        force
+      });
+
+      state.allocations = res.allocations;
+      state.overrideModal.open = false;
+      if (res.warning) {
+        showToast(`Override applied: ${res.warning}`, 'success');
+      } else {
+        showToast('Team reassigned successfully', 'success');
+      }
+      render();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  // Coordinator: Generate Conflict-Free Review Schedule
+  document.getElementById('btn-gen-schedule')?.addEventListener('click', () => {
+    try {
+      const res = generateConflictFreeSchedule({
+        teams: state.teams,
+        panels: state.panels,
+        rooms: state.rooms,
+        timeSlots: state.timeSlots,
+        round: 1,
+        cycleId: '2026_fall'
+      });
+      state.reviews = res.schedule;
+      showToast(`Schedule generated! ${res.stats.scheduled} conflict-free reviews.`);
+      render();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  // Coordinator: Reschedule Review Slot
+  document.querySelectorAll('.btn-reschedule').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const revId = btn.getAttribute('data-review-id');
+      const review = state.reviews.find(r => r.id === revId);
+      if (review) {
+        const next = proposeRescheduleSlot({
+          review,
+          allScheduledReviews: state.reviews,
+          panels: state.panels,
+          rooms: state.rooms,
+          availableSlots: state.timeSlots
+        });
+        if (next) {
+          state.reviews = state.reviews.map(r => r.id === revId ? next : r);
+          showToast(`Rescheduled to ${next.date} at ${next.startTime}`);
+          render();
+        } else {
+          showToast('No alternative conflict-free slot available', 'error');
+        }
+      }
+    });
+  });
+
+  // Coordinator: Export Dept CSV
+  document.getElementById('btn-export-csv')?.addEventListener('click', () => {
+    let csv = 'Team,Assigned Guide,Preference Satisfied,Status\n';
+    state.teams.forEach(t => {
+      const a = state.allocations.find(al => al.teamId === t.id);
+      const g = state.guides.find(guide => guide.uid === a?.assignedGuideUid);
+      csv += `"${t.name}","${g ? g.name : 'Unassigned'}","${a?.preferenceSatisfied || 'unassigned'}","${a?.assignedBy || 'auto'}"\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ptracker_allocations.csv';
+    link.click();
+    showToast('Department allocation CSV exported!');
+  });
+
+  // Coordinator: Approve Internship Final
+  document.querySelectorAll('.btn-approve-intern').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const internId = btn.getAttribute('data-intern-id');
+      const intern = state.internships.find(i => i.id === internId);
+      if (intern) {
+        try {
+          const approved = approveByCoordinator(intern, state.user?.uid || 'coord_1', 'Academic credits approved');
+          state.internships = state.internships.map(i => i.id === internId ? approved : i);
+          showToast(`Internship approved! ${approved.creditsEarned} academic credits granted.`);
+          render();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      }
+    });
+  });
+
+  // Guide: Approve Logbook & Request Changes
+  document.querySelectorAll('.btn-approve-logbook').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const logId = btn.getAttribute('data-log-id');
+      const input = /** @type {HTMLInputElement|null} */ (document.getElementById(`remarks-${logId}`));
+      const remarks = input ? input.value : 'Approved by guide';
+      state.logbooks = state.logbooks.map(l => l.id === logId ? { ...l, status: 'approved', guideRemarks: remarks } : l);
+      showToast('Weekly logbook approved!');
+      render();
+    });
+  });
+
+  document.querySelectorAll('.btn-request-changes-logbook').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const logId = btn.getAttribute('data-log-id');
+      const input = /** @type {HTMLInputElement|null} */ (document.getElementById(`remarks-${logId}`));
+      const remarks = input ? input.value : 'Revisions requested';
+      state.logbooks = state.logbooks.map(l => l.id === logId ? { ...l, status: 'changes_requested', guideRemarks: remarks } : l);
+      showToast('Revisions requested from team');
+      render();
+    });
+  });
+
+  // Guide: Approve Document & Revision Request
+  document.querySelectorAll('.btn-approve-doc').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const docId = btn.getAttribute('data-doc-id');
+      state.documents = state.documents.map(d => d.id === docId ? { ...d, status: 'guide_approved' } : d);
+      showToast('Milestone document approved!');
+      render();
+    });
+  });
+
+  document.querySelectorAll('.btn-changes-doc').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const docId = btn.getAttribute('data-doc-id');
+      state.documents = state.documents.map(d => d.id === docId ? { ...d, status: 'changes_requested' } : d);
+      showToast('Document revision requested');
+      render();
+    });
+  });
+
+  // Guide: Verify Internship Application
+  document.querySelectorAll('.btn-guide-approve-intern').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const internId = btn.getAttribute('data-intern-id');
+      const intern = state.internships.find(i => i.id === internId);
+      if (intern) {
+        try {
+          const approved = approveByGuide(intern, state.user?.uid || 'g1', 'Role and company verified');
+          state.internships = state.internships.map(i => i.id === internId ? approved : i);
+          showToast('Internship verified! Sent to Coordinator for final approval.');
+          render();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      }
+    });
+  });
+
+  // Panel: Select Review Slot & Submit Rubric
+  document.querySelectorAll('[data-select-rev-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.panelSelectedReviewId = el.getAttribute('data-select-rev-id');
+      render();
+    });
+  });
+
+  document.getElementById('btn-submit-rubric-score')?.addEventListener('click', () => {
+    const revId = document.getElementById('btn-submit-rubric-score')?.getAttribute('data-review-id');
+    const prob = Number(/** @type {HTMLInputElement|null} */ (document.getElementById('rubric-prob'))?.value || 0);
+    const lit = Number(/** @type {HTMLInputElement|null} */ (document.getElementById('rubric-lit'))?.value || 0);
+    const design = Number(/** @type {HTMLInputElement|null} */ (document.getElementById('rubric-design'))?.value || 0);
+    const impl = Number(/** @type {HTMLInputElement|null} */ (document.getElementById('rubric-impl'))?.value || 0);
+    const pres = Number(/** @type {HTMLInputElement|null} */ (document.getElementById('rubric-pres'))?.value || 0);
+    const comments = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('panel-comments'))?.value || '';
+
+    const total = prob + lit + design + impl + pres;
+    const panelUid = 'fac_turing';
+
+    state.reviews = state.reviews.map(r => {
+      if (r.id === revId) {
+        return {
+          ...r,
+          scores: {
+            ...r.scores,
+            [panelUid]: { problem: prob, literature: lit, design, implementation: impl, presentation: pres, total, comments, verdict: total >= 60 ? 'PROCEED' : 'NEEDS_WORK' }
+          },
+          status: 'completed'
+        };
+      }
+      return r;
+    });
+
+    showToast(`Evaluation locked: ${total}/100 submitted!`);
+    render();
+  });
+
+  // Focus: Stopwatch Toggle
+  document.getElementById('btn-toggle-stopwatch')?.addEventListener('click', () => {
+    if (state.activeFocusTimer.isRunning) {
+      // Pause timer
+      if (state.activeFocusTimer.timerInterval) {
+        clearInterval(state.activeFocusTimer.timerInterval);
+        state.activeFocusTimer.timerInterval = null;
+      }
+      state.activeFocusTimer.isRunning = false;
+      const durationMin = Math.max(1, Math.round(state.activeFocusTimer.elapsedSeconds / 60));
+      state.focusSessions.unshift({
+        id: `sess_${Date.now()}`,
+        uid: state.user?.uid || 'guest',
+        teamId: 't1',
+        subjectId: state.activeFocusTimer.activeSubjectId || 'sub_1',
+        durationMin,
+        mode: 'stopwatch',
+        endedAtMillis: Date.now()
+      });
+      showToast(`Logged ${durationMin} minutes of deep focus!`);
+    } else {
+      // Start timer
+      state.activeFocusTimer.isRunning = true;
+      state.activeFocusTimer.timerInterval = setInterval(() => {
+        state.activeFocusTimer.elapsedSeconds++;
+        const display = document.querySelector('.stopwatch-time-display');
+        if (display) {
+          const total = state.activeFocusTimer.elapsedSeconds;
+          const h = String(Math.floor(total / 3600)).padStart(2, '0');
+          const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+          const s = String(total % 60).padStart(2, '0');
+          display.textContent = `${h}:${m}:${s}`;
+        }
+      }, 1000);
+    }
+    render();
+  });
+
+  document.getElementById('btn-reset-stopwatch')?.addEventListener('click', () => {
+    if (state.activeFocusTimer.timerInterval) {
+      clearInterval(state.activeFocusTimer.timerInterval);
+      state.activeFocusTimer.timerInterval = null;
+    }
+    state.activeFocusTimer.isRunning = false;
+    state.activeFocusTimer.elapsedSeconds = 0;
+    render();
+  });
+
+  document.getElementById('select-focus-subject')?.addEventListener('change', (e) => {
+    state.activeFocusTimer.activeSubjectId = /** @type {HTMLSelectElement} */ (e.target).value;
+    render();
+  });
+
+  // Focus: Planner Todo Add & Check
+  document.getElementById('btn-add-todo')?.addEventListener('click', () => {
+    const input = /** @type {HTMLInputElement|null} */ (document.getElementById('input-new-todo'));
+    if (input && input.value.trim()) {
+      const todayIso = new Date().toISOString().split('T')[0];
+      let plan = state.dailyPlans.find(p => p.date === todayIso);
+      if (!plan) {
+        plan = { date: todayIso, todos: [], reviewed: false, reflection: '' };
+        state.dailyPlans.push(plan);
+      }
+      plan.todos.push({
+        id: `todo_${Date.now()}`,
+        title: input.value.trim(),
+        done: false,
+        plannedMin: 15
+      });
+      showToast('10-minute focus task added');
+      render();
+    }
+  });
+
+  document.querySelectorAll('.planner-checkbox').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const todoId = cb.getAttribute('data-todo-id');
+      const todayIso = new Date().toISOString().split('T')[0];
+      const plan = state.dailyPlans.find(p => p.date === todayIso);
+      if (plan) {
+        const item = plan.todos.find(t => t.id === todoId);
+        if (item) item.done = /** @type {HTMLInputElement} */ (e.target).checked;
+      }
+      render();
+    });
+  });
+
+  document.getElementById('btn-submit-review')?.addEventListener('click', () => {
+    const todayIso = new Date().toISOString().split('T')[0];
+    let plan = state.dailyPlans.find(p => p.date === todayIso);
+    if (!plan) {
+      plan = { date: todayIso, todos: [], reviewed: true, reflection: '' };
+      state.dailyPlans.push(plan);
+    } else {
+      plan.reviewed = true;
+    }
+    const ref = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('planner-reflection'));
+    if (ref) plan.reflection = ref.value;
+    showToast('Daily review completed! Streak maintained 🔥');
+    render();
+  });
+
+  // Student: Create Team
+  document.getElementById('btn-create-team')?.addEventListener('click', () => {
+    const input = /** @type {HTMLInputElement|null} */ (document.getElementById('input-team-name'));
+    if (input && input.value.trim()) {
+      const newTeam = {
+        id: `t_${Date.now()}`,
+        name: input.value.trim(),
+        domain: 'Software Engineering',
+        memberUids: [state.user?.uid || 'm1'],
+        inviteCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
+        status: 'forming'
+      };
+      state.teams.unshift(newTeam);
+      showToast(`Team "${newTeam.name}" created! Invite code: ${newTeam.inviteCode}`);
+      render();
+    }
+  });
+
+  // Student: Submit Logbook
+  document.getElementById('btn-submit-logbook')?.addEventListener('click', () => {
+    const weekInput = /** @type {HTMLInputElement|null} */ (document.getElementById('input-log-week'));
+    const workInput = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('input-log-work'));
+    const hoursInput = /** @type {HTMLInputElement|null} */ (document.getElementById('input-log-hours'));
+
+    if (workInput && workInput.value.trim()) {
+      state.logbooks.unshift({
+        id: `log_${Date.now()}`,
+        teamId: state.teams[0]?.id || 't1',
+        weekNumber: Number(weekInput?.value || 4),
+        workDone: workInput.value.trim(),
+        hoursSpent: Number(hoursInput?.value || 10),
+        status: 'submitted'
+      });
+      showToast('Weekly logbook submitted to guide for review!');
+      render();
+    }
+  });
+
+  // Student: Upload Milestone Doc
+  document.getElementById('btn-upload-doc')?.addEventListener('click', () => {
+    const typeSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('select-doc-type'));
+    const docType = typeSelect?.value || 'synopsis';
+    state.documents.unshift({
+      id: `doc_${Date.now()}`,
+      teamId: state.teams[0]?.id || 't1',
+      type: docType,
+      fileName: `${docType}_deliverable_v1.pdf`,
+      version: 1,
+      status: 'pending',
+      uploadedAtMillis: Date.now()
+    });
+    showToast(`Uploaded ${docType.toUpperCase()}! Sent to guide for approval.`);
+    render();
+  });
+
+  // Student: Apply Internship
+  document.getElementById('btn-apply-internship')?.addEventListener('click', () => {
+    const compInput = /** @type {HTMLInputElement|null} */ (document.getElementById('input-intern-company'));
+    const roleInput = /** @type {HTMLInputElement|null} */ (document.getElementById('input-intern-role'));
+
+    if (compInput && compInput.value.trim() && roleInput && roleInput.value.trim()) {
+      state.internships.unshift({
+        id: `intern_${Date.now()}`,
+        studentUid: state.user?.uid || 'm1',
+        studentName: state.user?.displayName || 'Alice Sharma',
+        company: compInput.value.trim(),
+        role: roleInput.value.trim(),
+        mentorName: 'Dr. Turing',
+        startDate: '2026-06-01',
+        endDate: '2026-08-01',
+        durationWeeks: 8,
+        status: 'applied',
+        approvals: {},
+        creditsEarned: 0
+      });
+      showToast('Internship application submitted! Awaiting guide verification.');
+      render();
+    }
+  });
+
   // Desktop studio switcher buttons
   document.querySelectorAll('[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => {

@@ -307,3 +307,483 @@ export function listenUserPreferences(userId, callback) {
   activeListeners.set('preferences', unsub);
 }
 
+// ─── USER PROFILES & ROLES ──────────────────────────────
+
+/**
+ * @param {string} userId
+ * @param {object} profileData
+ */
+export async function saveUserProfile(userId, profileData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  await setDoc(doc(db, 'users', userId), {
+    ...profileData,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+/**
+ * @param {string} userId
+ * @param {(profile: object|null) => void} callback
+ */
+export function listenUserProfile(userId, callback) {
+  unsubscribeListener(`user_profile_${userId}`);
+  if (!db) {
+    callback(null);
+    return;
+  }
+  const unsub = onSnapshot(doc(db, 'users', userId), (docSnap) => {
+    if (docSnap.exists()) {
+      callback({ id: docSnap.id, ...docSnap.data() });
+    } else {
+      callback(null);
+    }
+  }, (err) => {
+    console.error('[PTracker] User profile listener error:', err);
+    callback(null);
+  });
+  activeListeners.set(`user_profile_${userId}`, unsub);
+}
+
+// ─── TEAMS ──────────────────────────────────────────────
+
+/**
+ * @param {string} leaderUid
+ * @param {object} teamData - { name: string, department?: string }
+ * @returns {Promise<string>}
+ */
+export async function createTeam(leaderUid, teamData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const docRef = await addDoc(collection(db, 'teams'), {
+    ...teamData,
+    leaderUid,
+    memberUids: [leaderUid],
+    inviteCode,
+    status: 'forming',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return docRef.id;
+}
+
+/**
+ * @param {string} teamId
+ * @param {object} updates
+ */
+export async function updateTeam(teamId, updates) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  await updateDoc(doc(db, 'teams', teamId), {
+    ...updates,
+    updatedAt: serverTimestamp()
+  });
+}
+
+/**
+ * @param {(teams: Array) => void} callback
+ */
+export function listenAllTeams(callback) {
+  unsubscribeListener('all_teams');
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const unsub = onSnapshot(collection(db, 'teams'), (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Teams listener error:', err);
+    callback([]);
+  });
+  activeListeners.set('all_teams', unsub);
+}
+
+// ─── ALLOCATIONS ────────────────────────────────────────
+
+/**
+ * @param {string} allocId
+ * @param {object} allocData
+ */
+export async function saveAllocationDoc(allocId, allocData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  await setDoc(doc(db, 'allocations', allocId), {
+    ...allocData,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+/**
+ * @param {(allocations: Array) => void} callback
+ */
+export function listenAllocations(callback) {
+  unsubscribeListener('allocations');
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const unsub = onSnapshot(collection(db, 'allocations'), (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Allocations listener error:', err);
+    callback([]);
+  });
+  activeListeners.set('allocations', unsub);
+}
+
+// ─── LOGBOOKS ───────────────────────────────────────────
+
+/**
+ * @param {object} logData - { teamId, authorUid, weekNumber, workDone, hoursSpent, blockers }
+ * @returns {Promise<string>}
+ */
+export async function createLogbookEntry(logData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  const docRef = await addDoc(collection(db, 'logbooks'), {
+    ...logData,
+    status: 'submitted',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return docRef.id;
+}
+
+/**
+ * @param {string} entryId
+ * @param {'approved' | 'changes_requested'} status
+ * @param {string} remarks
+ */
+export async function reviewLogbookEntry(entryId, status, remarks) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  await updateDoc(doc(db, 'logbooks', entryId), {
+    status,
+    guideRemarks: remarks,
+    reviewedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+}
+
+/**
+ * @param {(logbooks: Array) => void} callback
+ */
+export function listenLogbooks(callback) {
+  unsubscribeListener('logbooks');
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const unsub = onSnapshot(collection(db, 'logbooks'), (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Logbooks listener error:', err);
+    callback([]);
+  });
+  activeListeners.set('logbooks', unsub);
+}
+
+// ─── DOCUMENTS ──────────────────────────────────────────
+
+/**
+ * @param {object} docData - { teamId, type, fileName, storagePath, uploadedBy }
+ * @returns {Promise<string>}
+ */
+export async function createDocumentRecord(docData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  const docRef = await addDoc(collection(db, 'documents'), {
+    ...docData,
+    status: 'pending',
+    version: 1,
+    uploadedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return docRef.id;
+}
+
+/**
+ * @param {string} docId
+ * @param {'guide_approved' | 'changes_requested' | 'coordinator_approved'} status
+ * @param {string} [remarks]
+ */
+export async function reviewDocumentRecord(docId, status, remarks = '') {
+  if (!db) throw new Error('Firestore is not initialized.');
+  await updateDoc(doc(db, 'documents', docId), {
+    status,
+    remarks,
+    updatedAt: serverTimestamp()
+  });
+}
+
+/**
+ * @param {(docs: Array) => void} callback
+ */
+export function listenDocuments(callback) {
+  unsubscribeListener('documents');
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const unsub = onSnapshot(collection(db, 'documents'), (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Documents listener error:', err);
+    callback([]);
+  });
+  activeListeners.set('documents', unsub);
+}
+
+// ─── REVIEWS ────────────────────────────────────────────
+
+/**
+ * @param {string} reviewId
+ * @param {object} reviewData
+ */
+export async function saveScheduledReviewDoc(reviewId, reviewData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  await setDoc(doc(db, 'reviews', reviewId), {
+    ...reviewData,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+/**
+ * @param {string} reviewId
+ * @param {string} panelUid
+ * @param {object} scoreData - { criteria, totalScore, comments, verdict }
+ */
+export async function submitReviewScoreDoc(reviewId, panelUid, scoreData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  await updateDoc(doc(db, 'reviews', reviewId), {
+    [`scores.${panelUid}`]: {
+      ...scoreData,
+      submittedAt: serverTimestamp()
+    },
+    status: 'completed',
+    updatedAt: serverTimestamp()
+  });
+}
+
+/**
+ * @param {(reviews: Array) => void} callback
+ */
+export function listenReviews(callback) {
+  unsubscribeListener('reviews');
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const unsub = onSnapshot(collection(db, 'reviews'), (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Reviews listener error:', err);
+    callback([]);
+  });
+  activeListeners.set('reviews', unsub);
+}
+
+// ─── INTERNSHIPS ────────────────────────────────────────
+
+/**
+ * @param {object} internData
+ * @returns {Promise<string>}
+ */
+export async function createInternshipDoc(internData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  const docRef = await addDoc(collection(db, 'internships'), {
+    ...internData,
+    status: 'applied',
+    creditsEarned: 0,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return docRef.id;
+}
+
+/**
+ * @param {string} internshipId
+ * @param {object} updates
+ */
+export async function updateInternshipDoc(internshipId, updates) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  await updateDoc(doc(db, 'internships', internshipId), {
+    ...updates,
+    updatedAt: serverTimestamp()
+  });
+}
+
+/**
+ * @param {(internships: Array) => void} callback
+ */
+export function listenInternships(callback) {
+  unsubscribeListener('internships');
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const unsub = onSnapshot(collection(db, 'internships'), (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Internships listener error:', err);
+    callback([]);
+  });
+  activeListeners.set('internships', unsub);
+}
+
+// ─── FOCUS & PLANNER (YPT) ──────────────────────────────
+
+/**
+ * @param {object} subjectData - { ownerUid, name, colorCode }
+ * @returns {Promise<string>}
+ */
+export async function createFocusSubjectDoc(subjectData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  const docRef = await addDoc(collection(db, 'focusSubjects'), {
+    ...subjectData,
+    archived: false,
+    createdAt: serverTimestamp()
+  });
+  return docRef.id;
+}
+
+/**
+ * @param {string} userId
+ * @param {(subjects: Array) => void} callback
+ */
+export function listenFocusSubjects(userId, callback) {
+  unsubscribeListener(`focus_subjects_${userId}`);
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const q = query(collection(db, 'focusSubjects'), where('ownerUid', '==', userId));
+  const unsub = onSnapshot(q, (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Focus subjects listener error:', err);
+    callback([]);
+  });
+  activeListeners.set(`focus_subjects_${userId}`, unsub);
+}
+
+/**
+ * @param {object} sessionData - { uid, subjectId, taskId, teamId, startedAtMillis, endedAtMillis, durationMin, mode, note }
+ * @returns {Promise<string>}
+ */
+export async function saveFocusSessionDoc(sessionData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  const docRef = await addDoc(collection(db, 'focusSessions'), {
+    ...sessionData,
+    createdAt: serverTimestamp()
+  });
+  return docRef.id;
+}
+
+/**
+ * @param {(sessions: Array) => void} callback
+ */
+export function listenFocusSessions(callback) {
+  unsubscribeListener('focus_sessions');
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const unsub = onSnapshot(collection(db, 'focusSessions'), (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Focus sessions listener error:', err);
+    callback([]);
+  });
+  activeListeners.set('focus_sessions', unsub);
+}
+
+/**
+ * @param {string} userId
+ * @param {string} date - 'YYYY-MM-DD'
+ * @param {object} planData - { todos, reflection, reviewed, moodRating }
+ */
+export async function saveDailyPlanDoc(userId, date, planData) {
+  if (!db) throw new Error('Firestore is not initialized.');
+  const planDocId = `${userId}_${date}`;
+  await setDoc(doc(db, 'dailyPlans', planDocId), {
+    uid: userId,
+    date,
+    ...planData,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+/**
+ * @param {string} userId
+ * @param {(plans: Array) => void} callback
+ */
+export function listenDailyPlans(userId, callback) {
+  unsubscribeListener(`daily_plans_${userId}`);
+  if (!db) {
+    callback([]);
+    return;
+  }
+  const q = query(collection(db, 'dailyPlans'), where('uid', '==', userId));
+  const unsub = onSnapshot(q, (snapshot) => {
+    const list = [];
+    snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+    callback(list);
+  }, (err) => {
+    console.error('[PTracker] Daily plans listener error:', err);
+    callback([]);
+  });
+  activeListeners.set(`daily_plans_${userId}`, unsub);
+}
+
+/**
+ * Update live presence in a team focus room
+ * @param {string} roomId
+ * @param {string} userId
+ * @param {'focus' | 'break' | 'offline'} status
+ * @param {string} [subjectName]
+ */
+export async function updateFocusRoomPresence(roomId, userId, status, subjectName = '') {
+  if (!db) return;
+  await setDoc(doc(db, 'focusRooms', roomId), {
+    [`members.${userId}`]: {
+      status,
+      subjectName,
+      lastHeartbeat: Date.now()
+    }
+  }, { merge: true });
+}
+
+/**
+ * @param {string} roomId
+ * @param {(room: object|null) => void} callback
+ */
+export function listenFocusRoom(roomId, callback) {
+  unsubscribeListener(`focus_room_${roomId}`);
+  if (!db) {
+    callback(null);
+    return;
+  }
+  const unsub = onSnapshot(doc(db, 'focusRooms', roomId), (docSnap) => {
+    if (docSnap.exists()) {
+      callback({ id: docSnap.id, ...docSnap.data() });
+    } else {
+      callback(null);
+    }
+  }, (err) => {
+    console.error('[PTracker] Focus room listener error:', err);
+    callback(null);
+  });
+  activeListeners.set(`focus_room_${roomId}`, unsub);
+}
+
