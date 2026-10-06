@@ -149,6 +149,8 @@ const state = {
   syncMeta: {},
   /** @type {{ type: string, region: string, q: string, savedOnly: boolean, sort: string }} */
   oppFilters: { type: 'all', region: 'all', q: '', savedOnly: false, sort: 'match' },
+  /** @type {boolean} */
+  showSyncErrors: false,
 };
 
 /**
@@ -1258,8 +1260,7 @@ function renderOppResultsHtml() {
       <div class="empty-state-modern">
         <div class="empty-state-icon">${icon('briefcase')}</div>
         <div class="empty-state-title">No Opportunities Yet</div>
-        <p class="empty-state-text">Run a sync to pull internships and jobs from 20+ sources. Make sure the scraper functions are deployed, then tap "Sync now".</p>
-        <button class="btn-pill btn-pill-primary" id="opp-sync-empty-btn" style="margin-top: 12px; width: fit-content; padding: 12px 24px;">${icon('sync')} Sync now</button>
+        <p class="empty-state-text">Listings sync automatically every 6 hours via GitHub Actions. You can also trigger one now: repo → Actions → "Sync opportunities" → Run workflow.</p>
       </div>
     `;
   }
@@ -1353,8 +1354,18 @@ function renderOpportunitiesScreen() {
     </div>
 
     <div class="opp-sync-info">
-      <span>${sync.label} · ${sync.sources} sources${sync.failed > 0 ? ` · ${sync.failed} failed` : ''}</span>
+      <span
+        ${sync.failed > 0 ? `id="opp-sync-details-toggle" style="cursor:pointer;text-decoration:underline dotted;" title="Tap to see failed sources"` : ''}
+      >${sync.label} · ${sync.sources} sources${sync.failed > 0 ? ` · ${sync.failed} failed` : ''}</span>
     </div>
+    ${state.showSyncErrors && sync.failed > 0 ? `
+      <div class="opp-sync-errors">
+        ${Object.entries(state.syncMeta)
+          .filter(([, m]) => m.ok === false)
+          .map(([id, m]) => `<div class="opp-sync-error-item"><strong>${escapeHtml(id)}</strong> — ${escapeHtml((m.error || 'failed').slice(0, 120))}</div>`)
+          .join('')}
+      </div>
+    ` : ''}
 
     <div class="opp-search-wrap">
       ${icon('search')}
@@ -2170,7 +2181,7 @@ function bindEvents() {
     }
   });
 
-  // Manual sync trigger
+  // Manual sync trigger (only works with Cloud Functions deployed)
   const handleSyncNow = async () => {
     const btn = document.getElementById('opp-sync-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
@@ -2180,13 +2191,18 @@ function bindEvents() {
       showToast('Sync finished — listings refreshed', 'success');
     } catch (err) {
       console.error('[PTracker] Sync error:', err);
-      showToast('Sync service unavailable — deploy functions/ or run the GitHub Action', 'error');
+      showToast('Sync service unavailable — syncs run via GitHub Actions', 'error');
     } finally {
       render();
     }
   };
   document.getElementById('opp-sync-btn')?.addEventListener('click', handleSyncNow);
-  document.getElementById('opp-sync-empty-btn')?.addEventListener('click', handleSyncNow);
+
+  // Failed-source detail toggle
+  document.getElementById('opp-sync-details-toggle')?.addEventListener('click', () => {
+    state.showSyncErrors = !state.showSyncErrors;
+    render();
+  });
 
   // Search box: filter without full re-render (keeps typing focus)
   document.getElementById('opp-search')?.addEventListener('input', (e) => {

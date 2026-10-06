@@ -92,18 +92,29 @@ export async function runSync(sourceIds = null, options = {}) {
         upserts += batch.length;
       }
 
-      // Prune listings this source stopped advertising
-      const cutoff = new Date(Date.now() - STALE_DAYS * 86400000);
-      const stale = await db
-        .collection('opportunities')
-        .where('source', '==', src.id)
-        .where('fetchedAt', '<', cutoff)
-        .limit(STALE_DELETE_LIMIT)
-        .get();
-      if (!stale.empty) {
-        const deleter = db.bulkWriter();
-        stale.docs.forEach((d) => deleter.delete(d.ref));
-        await deleter.close();
+      // Prune listings this source stopped advertising.
+      // Uses a single-field range query (auto-indexed) and filters by
+      // source in memory — a composite (source + fetchedAt) index would
+      // be required otherwise, and its absence fails every write run.
+      // Prune problems must never fail the source's listings.
+      let staleDeleted = 0;
+      try {
+        const cutoff = new Date(Date.now() - STALE_DAYS * 86400000);
+        const staleSnap = await db
+          .collection('opportunities')
+          .where('fetchedAt', '<', cutoff)
+          .orderBy('fetchedAt')
+          .limit(STALE_DELETE_LIMIT)
+          .get();
+        const staleDocs = staleSnap.docs.filter((d) => d.get('source') === src.id);
+        if (staleDocs.length > 0) {
+          const deleter = db.bulkWriter();
+          staleDocs.forEach((d) => deleter.delete(d.ref));
+          await deleter.close();
+          staleDeleted = staleDocs.length;
+        }
+      } catch (pruneErr) {
+        console.error(`[sync] prune skipped for ${src.id}:`, pruneErr?.message || pruneErr);
       }
 
       await metaRef.set(
@@ -112,7 +123,7 @@ export async function runSync(sourceIds = null, options = {}) {
           ok: true,
           count: jobs.length,
           upserts,
-          staleDeleted: stale.size,
+          staleDeleted,
           error: null,
         },
         { merge: true }

@@ -2484,3 +2484,25 @@ select.form-input-pill {
     justify-content: space-between;
   }
 }
+
+.opp-sync-errors {
+  font-family: 'Inter', monospace;
+  font-size: 0.66rem;
+  color: var(--text-secondary-light);
+  background: var(--clr-noir-surface);
+  border: 1px solid var(--clr-noir-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.opp-sync-error-item {
+  padding: 3px 0;
+  line-height: 1.5;
+}
+
+.opp-sync-error-item strong {
+  color: var(--clr-danger);
+}
