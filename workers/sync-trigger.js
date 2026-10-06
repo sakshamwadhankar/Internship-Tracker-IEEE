@@ -41,14 +41,11 @@ export default {
   async fetch(request, env) {
     const cors = corsHeaders(env, request);
 
+    const url = new URL(request.url);
+
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors });
     }
-    if (request.method !== 'POST') {
-      return new Response('Method not allowed', { status: 405, headers: cors });
-    }
-
-    const url = new URL(request.url);
 
     // Debug: reports which configuration keys the worker can SEE
     // (booleans and non-secret config only — never token values).
@@ -63,6 +60,10 @@ export default {
       }, null, 2), {
         headers: { ...cors, 'Content-Type': 'application/json' },
       });
+    }
+
+    if (request.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405, headers: cors });
     }
 
     if (url.pathname !== '/api/sync') {
