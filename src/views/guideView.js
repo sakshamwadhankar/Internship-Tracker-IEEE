@@ -26,7 +26,8 @@ export function renderGuideView({
   documents,
   internships,
   focusSessions,
-  activeSubTab = 'teams'
+  activeSubTab = 'teams',
+  codingProfilesMap = {}
 }) {
   const myAssignedTeamIds = new Set(
     allocations
@@ -59,7 +60,7 @@ export function renderGuideView({
   let contentHtml = '';
 
   if (activeSubTab === 'teams') {
-    contentHtml = renderGuideTeamsTab({ myTeams, logbooks, focusSessions });
+    contentHtml = renderGuideTeamsTab({ myTeams, logbooks, focusSessions, codingProfilesMap });
   } else if (activeSubTab === 'logbooks') {
     contentHtml = renderGuideLogbooksTab({ pendingLogbooks, myTeams });
   } else if (activeSubTab === 'documents') {
@@ -86,7 +87,7 @@ export function renderGuideView({
   `;
 }
 
-function renderGuideTeamsTab({ myTeams, logbooks, focusSessions }) {
+function renderGuideTeamsTab({ myTeams, logbooks, focusSessions, codingProfilesMap = {} }) {
   if (myTeams.length === 0) {
     return `
       <div class="empty-state-modern">
@@ -102,6 +103,21 @@ function renderGuideTeamsTab({ myTeams, logbooks, focusSessions }) {
     const tFocus = focusSessions.filter(f => f.teamId === t.id);
     const totalFocusMin = tFocus.reduce((acc, s) => acc + (s.durationMin || 0), 0);
 
+    const memberBadges = (t.memberUids || []).map(uid => {
+      const p = codingProfilesMap[uid] || {};
+      const parts = [];
+      if (p.githubStats) parts.push(`${icon('github')} ${p.githubStats.publicRepos} repos`);
+      if (p.leetcodeStats) parts.push(`${icon('leetcode')} ${p.leetcodeStats.totalSolved} solved`);
+      if (p.hackerrankStats) parts.push(`${icon('hackerrank')} ${p.hackerrankStats.totalStars}★`);
+
+      return parts.length > 0 ? `
+        <div style="font-size: 0.75rem; color: #FFF; background: rgba(255,255,255,0.04); padding: 4px 8px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px;">
+          <strong style="color: var(--text-secondary-light);">${uid}:</strong>
+          ${parts.join(' · ')}
+        </div>
+      ` : '';
+    }).filter(Boolean);
+
     return `
       <div class="coord-guide-card">
         <div class="guide-card-top">
@@ -111,9 +127,18 @@ function renderGuideTeamsTab({ myTeams, logbooks, focusSessions }) {
         <p style="font-size: 0.85rem; color: var(--text-secondary-light); margin: 8px 0;">
           ${t.memberUids?.length || 1} Mentees · Progress: ${approvedCount} Logbooks Approved
         </p>
-        <div class="stat-sub" style="color: var(--clr-orange);">
+        <div class="stat-sub" style="color: var(--clr-orange); margin-bottom: 8px;">
           ${Math.round(totalFocusMin / 60)} Focus Hours Logged by Team
         </div>
+
+        ${memberBadges.length > 0 ? `
+          <div style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+            <span style="font-size: 0.72rem; color: var(--text-secondary-light); text-transform: uppercase; display: block; margin-bottom: 4px;">Mentee Coding Milestones:</span>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              ${memberBadges.join('')}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   }).join('');

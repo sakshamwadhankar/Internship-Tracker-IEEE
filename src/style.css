@@ -2948,6 +2948,63 @@ select.form-input-pill {
   color: var(--text-secondary-light);
 }
 
+/* Coding Platform Badges & Chips */
+.platform-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  backdrop-filter: blur(8px);
+}
+
+.platform-chip:hover {
+  transform: translateY(-1px);
+}
+
+.platform-chip.gh {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #F0F6FC;
+}
+
+.platform-chip.lc {
+  background: rgba(255, 161, 22, 0.12);
+  border: 1px solid rgba(255, 161, 22, 0.3);
+  color: #FFA116;
+}
+
+.platform-chip.hr {
+  background: rgba(0, 234, 100, 0.12);
+  border: 1px solid rgba(0, 234, 100, 0.3);
+  color: #00EA64;
+}
+
+.room-live-timer {
+  animation: pulse-timer 1s infinite alternate;
+}
+
+@keyframes pulse-timer {
+  from { opacity: 0.9; }
+  to { opacity: 1; transform: scale(1.02); }
+}
+
+/* Coding Profiles Modal */
+.coding-modal-card {
+  background: #181B19;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 90%;
+  max-width: 480px;
+  box-shadow: var(--shadow-float);
+  color: #FFF;
+}
+
 /* Leaderboard */
 .leaderboard-container {
   display: flex;

@@ -30,7 +30,10 @@ export function renderFocusView({
   dailyPlans = [],
   allUsers = [],
   activeSessionState = { isRunning: false, elapsedSeconds: 0, activeSubjectId: null },
-  activeSubTab = 'timer'
+  activeSubTab = 'timer',
+  friends = [],
+  codingProfilesMap = {},
+  livePresence = {}
 }) {
   const streak = calculateReviewStreak(dailyPlans);
   const activeSubject = subjects.find(s => s.id === activeSessionState.activeSubjectId) || subjects[0];
@@ -59,7 +62,16 @@ export function renderFocusView({
   } else if (activeSubTab === 'planner') {
     contentHtml = renderPlannerTab({ userId, dailyPlans, streak, subjects });
   } else if (activeSubTab === 'room') {
-    contentHtml = renderTeamRoomTab({ allUsers, activeSessionState });
+    contentHtml = renderTeamRoomTab({
+      userId,
+      allUsers,
+      activeSessionState,
+      activeSubject,
+      focusSessions: sessions,
+      friends,
+      codingProfilesMap,
+      livePresence
+    });
   } else if (activeSubTab === 'leaderboard') {
     contentHtml = renderLeaderboardTab({ sessions, allUsers });
   }
@@ -199,37 +211,160 @@ function renderPlannerTab({ userId, dailyPlans, streak, subjects }) {
   `;
 }
 
-function renderTeamRoomTab({ allUsers, activeSessionState }) {
-  const members = allUsers.slice(0, 4);
+function formatLiveTime(totalSec) {
+  const sec = Math.max(0, Math.floor(Number(totalSec) || 0));
+  const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+  const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
 
-  const memberPills = members.map((m, idx) => {
-    const isCurrentUserFocusing = idx === 0 && activeSessionState.isRunning;
-    const isTeammateFocusing = idx === 1;
-    const status = isCurrentUserFocusing || isTeammateFocusing ? 'focusing' : 'offline';
+function renderTeamRoomTab({
+  userId,
+  allUsers = [],
+  activeSessionState = { isRunning: false, elapsedSeconds: 0, activeSubjectId: null },
+  activeSubject = null,
+  focusSessions = [],
+  friends = [],
+  codingProfilesMap = {},
+  livePresence = {}
+}) {
+  // Combine teammates and friends into room participants
+  const participantsMap = new Map();
+
+  // Current user first
+  participantsMap.set(userId || 'guest', {
+    id: userId || 'guest',
+    name: 'You',
+    isCurrent: true,
+    teamId: 't1'
+  });
+
+  // Teammates
+  allUsers.forEach(u => {
+    if (u.uid && !participantsMap.has(u.uid)) {
+      participantsMap.set(u.uid, {
+        id: u.uid,
+        name: u.name || 'Teammate',
+        teamId: u.teamId,
+        isCurrent: u.uid === userId
+      });
+    }
+  });
+
+  // Friends
+  friends.forEach(f => {
+    if (f.id && !participantsMap.has(f.id)) {
+      participantsMap.set(f.id, {
+        id: f.id,
+        name: f.name || 'Friend',
+        teamId: f.teamId,
+        isFriend: true
+      });
+    }
+  });
+
+  const participants = Array.from(participantsMap.values());
+
+  const memberCards = participants.map(p => {
+    const isCurrent = p.isCurrent;
+    const presence = livePresence[p.id] || {};
+    const isFocusing = isCurrent ? activeSessionState.isRunning : Boolean(presence.isRunning);
+    const elapsedSec = isCurrent
+      ? activeSessionState.elapsedSeconds
+      : (presence.startedAtMillis ? Math.floor((Date.now() - presence.startedAtMillis) / 1000) : (presence.elapsedSeconds || 0));
+
+    const subjectName = isCurrent
+      ? (activeSubject?.name || 'Deep Focus')
+      : (presence.subjectName || 'Engineering');
+
+    const subjectColor = isCurrent
+      ? (activeSubject?.colorCode || '#FF6420')
+      : (presence.subjectColor || '#FF6420');
+
+    // Total focus minutes today for this user from sessions
+    const userTodayMinutes = focusSessions
+      .filter(s => s.uid === p.id)
+      .reduce((sum, s) => sum + (s.durationMin || 0), 0);
+
+    const coding = codingProfilesMap[p.id] || {};
+
+    const codingBadgesHtml = `
+      <div class="room-coding-badges" style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+        ${coding.githubStats ? `
+          <a href="${coding.githubStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip gh" title="${coding.githubStats.publicRepos} GitHub Repos">
+            ${icon('github')} <span>${coding.githubStats.publicRepos} repos</span>
+          </a>
+        ` : (coding.github ? `<span class="platform-chip gh">${icon('github')} <span>@${coding.github}</span></span>` : '')}
+        ${coding.leetcodeStats ? `
+          <a href="${coding.leetcodeStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip lc" title="${coding.leetcodeStats.totalSolved} LeetCode Solved">
+            ${icon('leetcode')} <span>${coding.leetcodeStats.totalSolved} solved</span>
+          </a>
+        ` : (coding.leetcode ? `<span class="platform-chip lc">${icon('leetcode')} <span>@${coding.leetcode}</span></span>` : '')}
+        ${coding.hackerrankStats ? `
+          <a href="${coding.hackerrankStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip hr" title="${coding.hackerrankStats.totalStars} HackerRank Stars">
+            ${icon('hackerrank')} <span>${coding.hackerrankStats.totalStars}★</span>
+          </a>
+        ` : (coding.hackerrank ? `<span class="platform-chip hr">${icon('hackerrank')} <span>@${coding.hackerrank}</span></span>` : '')}
+      </div>
+    `;
 
     return `
-      <div class="room-member-card ${status}">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div class="room-avatar">${m.name ? m.name.charAt(0) : 'U'}</div>
-          <div>
-            <strong style="color: #FFF; display: block;">${m.name || 'Teammate'}</strong>
-            <span style="font-size: 0.8rem; color: var(--text-secondary-light);">${status === 'focusing' ? 'Focusing on FYP' : 'Offline'}</span>
+      <div class="room-member-card ${isFocusing ? 'focusing' : 'offline'}">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="room-avatar" style="${isFocusing ? 'border: 2px solid ' + subjectColor : ''}">
+              ${p.name ? p.name.charAt(0) : 'U'}
+            </div>
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <strong style="color: #FFF; font-size: 0.95rem;">${p.name}</strong>
+                ${p.isCurrent ? '<span class="pref-pill top" style="font-size: 0.65rem;">You</span>' : ''}
+                ${p.isFriend ? '<span class="pref-pill" style="font-size: 0.65rem;">Friend</span>' : ''}
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary-light); margin-top: 2px;">
+                ${isFocusing ? `
+                  <span style="color: ${subjectColor}; font-weight: 600;">Focusing on ${subjectName}</span>
+                ` : `
+                  <span>${userTodayMinutes > 0 ? `${userTodayMinutes}m logged today` : 'Idle · Ready to study'}</span>
+                `}
+              </div>
+            </div>
+          </div>
+
+          <div style="text-align: right;">
+            <span class="room-status-indicator ${isFocusing ? 'focusing' : 'offline'}">
+              ${isFocusing ? 'LIVE' : 'OFFLINE'}
+            </span>
+            ${isFocusing ? `
+              <div class="room-live-timer" style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; color: var(--clr-orange); margin-top: 4px;">
+                ${formatLiveTime(elapsedSec)}
+              </div>
+            ` : ''}
           </div>
         </div>
-        <span class="room-status-indicator ${status}">${status.toUpperCase()}</span>
+
+        ${codingBadgesHtml}
       </div>
     `;
   }).join('');
 
   return `
     <div class="team-room-section">
-      <div class="coord-section-title">Live Team Focus Room (Presence Heartbeat)</div>
-      <p style="font-size: 0.85rem; color: var(--text-secondary-light); margin-bottom: 16px;">
-        See teammates studying live to maintain mutual accountability. Status updates automatically with 2-minute heartbeats.
-      </p>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <div class="coord-section-title" style="margin-bottom: 4px;">Live Team & Friends Focus Room</div>
+          <p style="font-size: 0.85rem; color: var(--text-secondary-light); margin: 0;">
+            Real-time timer broadcast. See study buddies focusing live and inspect coding progress.
+          </p>
+        </div>
+        <button id="btn-room-add-friend" class="coord-btn secondary sm">
+          ${icon('users')} Add Friend
+        </button>
+      </div>
 
       <div class="room-members-grid">
-        ${memberPills}
+        ${memberCards}
       </div>
     </div>
   `;
