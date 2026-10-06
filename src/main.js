@@ -66,8 +66,7 @@ import {
   listenSavedOpportunities,
   toggleSavedOpportunity,
   listenSyncMeta,
-  unsubscribeOpportunityListeners,
-  requestSync
+  unsubscribeOpportunityListeners
 } from './opportunities.js';
 
 import { renderCoordinatorView } from './views/coordinatorView.js';
@@ -2995,30 +2994,15 @@ function bindEvents() {
     }
   });
 
-  // Manual sync trigger — only works with Cloud Functions deployed
-  // (the free GitHub Actions path syncs on a schedule instead). After a
-  // failure we back off for an hour so the dead endpoint isn't hammered.
-  const SYNC_UNAVAILABLE_KEY = 'ptracker_sync_unavailable_at';
-  const handleSyncNow = async () => {
-    const lastFail = Number(localStorage.getItem(SYNC_UNAVAILABLE_KEY) || 0);
-    if (Date.now() - lastFail < 3600000) {
-      showToast('In-app sync needs Cloud Functions — listings sync every 6h via GitHub Actions.', 'info');
-      return;
-    }
-    const btn = document.getElementById('opp-sync-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
-    showToast('Syncing 20+ sources — this can take a minute…');
-    try {
-      await requestSync();
-      localStorage.removeItem(SYNC_UNAVAILABLE_KEY);
-      showToast('Sync finished — listings refreshed', 'success');
-    } catch (err) {
-      console.error('[PTracker] Sync error:', err);
-      localStorage.setItem(SYNC_UNAVAILABLE_KEY, String(Date.now()));
-      showToast('In-app sync unavailable — listings sync every 6h via GitHub Actions.', 'info');
-    } finally {
-      render();
-    }
+  // Sync trigger — on the free GitHub Actions path there is no Cloud
+  // Function to call, so the button opens the workflow's "Run workflow"
+  // page directly. If you ever deploy functions/ (Blaze), swap this back
+  // to requestSync() for true in-app syncs.
+  const GITHUB_SYNC_URL =
+    'https://github.com/sakshamwadhankar/Internship-Tracker-IEEE/actions/workflows/sync-opportunities.yml';
+  const handleSyncNow = () => {
+    window.open(GITHUB_SYNC_URL, '_blank', 'noopener');
+    showToast('Hit "Run workflow" on GitHub — listings appear here automatically.', 'info');
   };
   document.getElementById('opp-sync-btn')?.addEventListener('click', handleSyncNow);
 
