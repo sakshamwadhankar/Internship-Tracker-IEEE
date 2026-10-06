@@ -2089,6 +2089,12 @@ select.form-input-pill {
   color: #FFFFFF;
 }
 
+.toast.info {
+  background: #1B2229;
+  border: 1px solid #4A9EDA;
+  color: #FFFFFF;
+}
+
 /* Empty States */
 .empty-state-modern {
   display: flex;
