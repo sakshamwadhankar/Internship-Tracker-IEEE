@@ -3697,3 +3697,23 @@ select.form-input-pill {
   color: var(--clr-danger);
 }
 
+
+.opp-relaxed-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary-light);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 14px 4px 10px;
+}
+
+.opp-relaxed-divider::before,
+.opp-relaxed-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--clr-noir-border);
+}

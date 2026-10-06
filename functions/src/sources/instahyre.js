@@ -1,17 +1,21 @@
 /**
  * Instahyre — India tech hiring platform.
- * Scrapes the public job search page; heavily client-rendered, so this
- * attempts the markup and degrades gracefully to zero results.
+ * DISABLED: the site's WAF returns 403 to datacenter IPs (including
+ * GitHub Actions runners) even with full browser headers. Re-enable only
+ * if you route requests through a residential proxy.
  */
 
 import { fetchHtml } from './lib.js';
 import * as cheerio from 'cheerio';
+
+const ENABLED = false;
 
 export default {
   id: 'instahyre',
   name: 'Instahyre',
   region: 'india',
   kind: 'html',
+  enabled: ENABLED,
 
   /**
    * @param {{ fetchImpl?: typeof fetch }} [ctx]

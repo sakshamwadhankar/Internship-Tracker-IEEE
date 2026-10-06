@@ -49,6 +49,25 @@ export default {
       });
     });
 
+    // Fallback: card markup changed but detail links are still present
+    if (jobs.length === 0) {
+      $('a[href*="/internship/detail/"]').each((_, el) => {
+        const href = $(el).attr('href');
+        const title = $(el).text().replace(/\s+/g, ' ').trim();
+        if (!href || title.length < 8 || title.length > 140) return;
+        jobs.push({
+          title,
+          company: 'Internshala listing',
+          location: 'India',
+          region: 'india',
+          type: 'internship',
+          applyUrl: new URL(href, 'https://internshala.com').href,
+          tags: [],
+          description: '',
+        });
+      });
+    }
+
     return jobs;
   },
 };

@@ -56,6 +56,7 @@ import {
   filterTasksByDate,
   scoreOpportunity,
   filterOpportunities,
+  filterWithFallback,
   formatTimeAgo
 } from './utils.js';
 import {
@@ -1553,11 +1554,12 @@ function getSyncSummary() {
  * @returns {string}
  */
 function renderOppResultsHtml() {
-  const filtered = filterOpportunities(
+  const view = filterWithFallback(
     state.opportunities,
     state.oppFilters,
     state.savedOppIds,
-    state.profile
+    state.profile,
+    7
   );
 
   if (state.opportunities.length === 0) {
@@ -1565,12 +1567,12 @@ function renderOppResultsHtml() {
       <div class="empty-state-modern">
         <div class="empty-state-icon">${icon('briefcase')}</div>
         <div class="empty-state-title">No Opportunities Yet</div>
-        <p class="empty-state-text">Listings sync automatically every 6 hours via GitHub Actions. You can also trigger one now: repo → Actions → "Sync opportunities" → Run workflow.</p>
+        <p class="empty-state-text">Listings sync automatically every 6 hours via GitHub Actions. You can also trigger one now with the Sync button.</p>
       </div>
     `;
   }
 
-  if (filtered.length === 0) {
+  if (view.results.length === 0) {
     return `
       <div class="empty-state-modern" style="padding: 24px;">
         <p class="empty-state-text">No matches for the current filters.</p>
@@ -1578,7 +1580,17 @@ function renderOppResultsHtml() {
     `;
   }
 
-  return filtered.map((opp, idx) => renderOppCard(opp, idx)).join('');
+  const matchCount = view.results.length - view.fallbackCount;
+  const cards = view.results.map((opp, idx) => {
+    const card = renderOppCard(opp, idx);
+    // Insert an honest divider before widened ("related") results
+    if (view.fallbackCount > 0 && idx === matchCount) {
+      return `<div class="opp-relaxed-divider">${escapeHtml(view.note)}</div>${card}`;
+    }
+    return card;
+  }).join('');
+
+  return cards;
 }
 
 /**
@@ -1704,7 +1716,7 @@ function renderOpportunitiesScreen() {
     <div class="tasks-stack-section">
       <div class="section-eyebrow">
         <span>Opportunities</span>
-        <span class="section-eyebrow-count" id="opp-count">${filterOpportunities(state.opportunities, f, state.savedOppIds, state.profile).length} shown</span>
+        <span class="section-eyebrow-count" id="opp-count">${filterWithFallback(state.opportunities, f, state.savedOppIds, state.profile, 7).results.length} shown</span>
       </div>
       <div id="opp-results">${renderOppResultsHtml()}</div>
     </div>
@@ -2994,15 +3006,41 @@ function bindEvents() {
     }
   });
 
-  // Sync trigger — on the free GitHub Actions path there is no Cloud
-  // Function to call, so the button opens the workflow's "Run workflow"
-  // page directly. If you ever deploy functions/ (Blaze), swap this back
-  // to requestSync() for true in-app syncs.
+  // Sync trigger. Two modes:
+  //  - VITE_SYNC_TRIGGER_URL set (Cloudflare Worker): one-tap in-app sync —
+  //    the Worker dispatches the GitHub workflow with its own token.
+  //  - Not set: opens the workflow's "Run workflow" page for a manual run.
+  //  (If you ever deploy functions/ on Blaze, swap back to requestSync().)
   const GITHUB_SYNC_URL =
     'https://github.com/sakshamwadhankar/Internship-Tracker-IEEE/actions/workflows/sync-opportunities.yml';
-  const handleSyncNow = () => {
-    window.open(GITHUB_SYNC_URL, '_blank', 'noopener');
-    showToast('Hit "Run workflow" on GitHub — listings appear here automatically.', 'info');
+  const SYNC_TRIGGER_URL = import.meta.env.VITE_SYNC_TRIGGER_URL || '';
+  /** @type {number} */
+  let lastSyncTriggerAt = 0;
+
+  const handleSyncNow = async () => {
+    // Debounce: one dispatch per minute is plenty
+    if (Date.now() - lastSyncTriggerAt < 60000) {
+      showToast('A sync was just triggered — give it a couple of minutes.', 'info');
+      return;
+    }
+
+    if (!SYNC_TRIGGER_URL) {
+      window.open(GITHUB_SYNC_URL, '_blank', 'noopener');
+      showToast('Hit "Run workflow" on GitHub — listings appear here automatically.', 'info');
+      return;
+    }
+
+    lastSyncTriggerAt = Date.now();
+    showToast('Sync started — listings will appear in a few minutes.');
+    try {
+      const res = await fetch(SYNC_TRIGGER_URL, { method: 'POST' });
+      if (!res.ok) throw new Error(`sync trigger responded ${res.status}`);
+    } catch (err) {
+      console.error('[PTracker] Sync trigger error:', err);
+      lastSyncTriggerAt = 0;
+      showToast('Could not reach the sync service — try the GitHub Actions page.', 'error');
+      window.open(GITHUB_SYNC_URL, '_blank', 'noopener');
+    }
   };
   document.getElementById('opp-sync-btn')?.addEventListener('click', handleSyncNow);
 
@@ -3019,7 +3057,7 @@ function bindEvents() {
     if (results) results.innerHTML = renderOppResultsHtml();
     const count = document.getElementById('opp-count');
     if (count) {
-      count.textContent = `${filterOpportunities(state.opportunities, state.oppFilters, state.savedOppIds, state.profile).length} shown`;
+      count.textContent = `${filterWithFallback(state.opportunities, state.oppFilters, state.savedOppIds, state.profile, 7).results.length} shown`;
     }
   });
 

@@ -22,16 +22,18 @@ function mockResponse(payload, status = 200) {
 }
 
 describe('source registry', () => {
-  test('exposes 19 runnable sources and excludes disabled ones by default', () => {
+  test('exposes 17 runnable sources and excludes disabled ones by default', () => {
     const all = getSources();
-    assert.equal(all.length, 19);
-    assert.ok(!all.find((s) => s.id === 'linkedin'), 'disabled sources must not run by default');
+    assert.equal(all.length, 17);
+    for (const disabledId of ['linkedin', 'instahyre', 'letintern']) {
+      assert.ok(!all.find((s) => s.id === disabledId), `${disabledId} must not run by default`);
+    }
   });
 
   test('explicit IDs can include disabled sources for auditing', () => {
-    const withLinkedin = getSources(['linkedin', 'adzuna']);
-    assert.equal(withLinkedin.length, 2);
-    assert.ok(withLinkedin.find((s) => s.id === 'linkedin'));
+    const explicit = getSources(['linkedin', 'adzuna', 'instahyre', 'letintern']);
+    assert.equal(explicit.length, 4);
+    assert.ok(explicit.find((s) => s.id === 'linkedin'));
   });
 
   test('every adapter has the required shape', () => {

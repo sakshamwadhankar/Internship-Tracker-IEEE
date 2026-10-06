@@ -406,6 +406,60 @@ export function filterOpportunities(opportunities, filters, savedIds = [], profi
 }
 
 /**
+ * Filter with a results guarantee: if the strict filter yields fewer than
+ * `minResults` items, progressively widen (drop region → drop type → drop
+ * search text) until the target is met. Strict matches always come first;
+ * widened ones are returned separately so the UI can label them honestly
+ * as "related" instead of pretending they match.
+ * @param {Opportunity[]} opportunities
+ * @param {{ type: string, region: string, q: string, savedOnly: boolean, sort: string }} filters
+ * @param {string[]} [savedIds]
+ * @param {UserProfile|null} [profile]
+ * @param {number} [minResults]
+ * @returns {{ results: Opportunity[], fallbackCount: number, note: string }}
+ */
+export function filterWithFallback(opportunities, filters, savedIds = [], profile = null, minResults = 7) {
+  const f = filters || { type: 'all', region: 'all', q: '', savedOnly: false, sort: 'match' };
+  const matches = filterOpportunities(opportunities, f, savedIds, profile);
+  if (matches.length >= minResults || opportunities.length === 0) {
+    return { results: matches, fallbackCount: 0, note: '' };
+  }
+
+  const seen = new Set(matches.map(o => o.id));
+  /** @type {Opportunity[]} */
+  const fallback = [];
+
+  // Widening ladder, loosest last. savedOnly is never relaxed — a user's
+  // bookmark list must stay exact.
+  const steps = [
+    { ...f, region: 'all' },
+    { ...f, region: 'all', type: 'all' },
+    { ...f, region: 'all', type: 'all', q: '' },
+  ];
+
+  for (const relaxed of steps) {
+    const extra = filterOpportunities(opportunities, relaxed, savedIds, profile);
+    for (const opp of extra) {
+      if (seen.has(opp.id)) continue;
+      seen.add(opp.id);
+      fallback.push(opp);
+      if (matches.length + fallback.length >= minResults) break;
+    }
+    if (matches.length + fallback.length >= minResults) break;
+  }
+
+  const parts = [];
+  if (f.region !== 'all') parts.push('other regions');
+  if (f.type !== 'all') parts.push('other types');
+  if (f.q) parts.push('wider search');
+  const note = fallback.length > 0
+    ? `Showing related listings from ${parts.length > 0 ? parts.join(' and ') : 'wider filters'}`
+    : '';
+
+  return { results: [...matches, ...fallback], fallbackCount: fallback.length, note };
+}
+
+/**
  * Format a timestamp (ms epoch, epoch seconds, or Firestore-ish {seconds})
  * as a human "ago" label
  * @param {number|{seconds?: number, toMillis?: Function}|null|undefined} input

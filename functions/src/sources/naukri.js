@@ -19,7 +19,7 @@ export default {
    * @returns {Promise<object[]>}
    */
   async fetchJobs({ fetchImpl = fetch } = {}) {
-    const html = await fetchHtml('https://www.naukri.com/internship-jobs?src=jobsearchDesk&seoKey=internship-jobs', { fetchImpl });
+    const html = await fetchHtml('https://www.naukri.com/internship-jobs?src=jobsearchDesk&seoKey=internship-jobs', { fetchImpl, timeoutMs: 30000 });
     const $ = cheerio.load(html);
     const jobs = [];
 

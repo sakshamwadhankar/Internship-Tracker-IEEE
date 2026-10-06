@@ -1,16 +1,20 @@
 /**
  * LetIntern — Indian internship board.
- * Scrapes the public internships listing page.
+ * DISABLED: the site has been unreachable (connection failures) for an
+ * extended period. Re-enable if it comes back online.
  */
 
 import { fetchHtml } from './lib.js';
 import * as cheerio from 'cheerio';
+
+const ENABLED = false;
 
 export default {
   id: 'letintern',
   name: 'LetIntern',
   region: 'india',
   kind: 'html',
+  enabled: ENABLED,
 
   /**
    * @param {{ fetchImpl?: typeof fetch }} [ctx]

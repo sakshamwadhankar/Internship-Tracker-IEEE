@@ -63,7 +63,27 @@ Scheduled every 6 hours; also enables the in-app **Sync** button
 
 With either option: listings older than 45 days are pruned automatically,
 and per-source health (counts, skips, errors) is visible in the
-`sync_meta` Firestore collection.
+`sync_meta` Firestore collection — and in-app via the underlined
+"Synced … · N sources" line on the Jobs screen.
+
+### One-tap sync (optional, free)
+
+By default the in-app Sync button opens the GitHub Actions page. To make
+it trigger a real sync with one tap, deploy the tiny trigger proxy in
+`workers/sync-trigger.js` on Cloudflare's free tier (no card):
+
+1. Create a fine-grained GitHub PAT: Settings → Developer settings →
+   Fine-grained tokens → **only this repo**, permission
+   **Actions: Read and write**.
+2. Cloudflare dashboard → Workers & Pages → Create Worker → paste
+   `workers/sync-trigger.js` → deploy → Settings → Variables:
+   - `GH_PAT` (Secret) — the token
+   - `GH_REPO` — `sakshamwadhankar/Internship-Tracker-IEEE`
+   - `ALLOWED_ORIGINS` — `https://ptracker-app-7117.web.app,http://localhost:5173`
+3. Put the worker URL in `.env` as `VITE_SYNC_TRIGGER_URL` and rebuild.
+
+The scheduled GitHub Action stays in charge either way; the button just
+adds an on-demand run.
 
 ## Sources (20)
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   scoreOpportunity,
   filterOpportunities,
+  filterWithFallback,
   formatTimeAgo
 } from '../src/utils.js';
 
@@ -131,6 +132,69 @@ describe('filterOpportunities', () => {
   test('empty query and null-ish inputs do not crash', () => {
     assert.doesNotThrow(() => filterOpportunities([], { type: 'all', region: 'all', q: '', savedOnly: false, sort: 'newest' }));
     assert.doesNotThrow(() => filterOpportunities(opps, null));
+  });
+});
+
+describe('filterWithFallback', () => {
+  // 9 global fulltime jobs + 2 Indian internships: the India+internship
+  // combination has only 2 exact matches, so widening must fill to 7.
+  const opps = Array.from({ length: 9 }, (_, i) => ({
+    id: `g${i}`,
+    title: `Global Role ${i}`,
+    company: `Corp ${i}`,
+    location: 'Berlin, Germany',
+    region: 'global',
+    type: 'fulltime',
+    tags: [],
+    applyUrl: `https://x.com/g${i}`,
+    postedAtMs: 1000 - i,
+  }));
+  opps.push(
+    { id: 'in1', title: 'India Intern A', company: 'Desi Co', location: 'Pune', region: 'india', type: 'internship', tags: [], applyUrl: 'https://x.com/in1', postedAtMs: 500 },
+    { id: 'in2', title: 'India Intern B', company: 'Desi Co', location: 'Pune', region: 'india', type: 'internship', tags: [], applyUrl: 'https://x.com/in2', postedAtMs: 400 },
+  );
+
+  const indiaInternshipFilters = { type: 'internship', region: 'india', q: '', savedOnly: false, sort: 'newest' };
+
+  test('strict matches come first and stay unmodified when plentiful', () => {
+    const all = { type: 'all', region: 'all', q: '', savedOnly: false, sort: 'newest' };
+    const view = filterWithFallback(opps, all, [], null, 7);
+    assert.equal(view.fallbackCount, 0);
+    assert.equal(view.results.length, 11);
+    assert.equal(view.note, '');
+  });
+
+  test('pads to 7 with widened results when the combination is scarce', () => {
+    const view = filterWithFallback(opps, indiaInternshipFilters, [], null, 7);
+    assert.equal(view.results.length, 7);
+    assert.equal(view.fallbackCount, 5);
+    assert.match(view.note, /other regions/);
+    // First results must be the exact matches
+    assert.deepEqual(view.results.slice(0, 2).map(o => o.id), ['in1', 'in2']);
+  });
+
+  test('widening ladder drops region first, then type, then search text', () => {
+    // Only 1 India internship exists; even dropping region gives 2 total
+    // internships, so type must be dropped to reach 7.
+    const oneIndian = opps.filter(o => o.id !== 'in2');
+    const view = filterWithFallback(oneIndian, indiaInternshipFilters, [], null, 7);
+    assert.equal(view.results.length, 7);
+    assert.ok(view.fallbackCount >= 5);
+    assert.match(view.note, /other types/);
+  });
+
+  test('never relaxes savedOnly — bookmarks stay exact', () => {
+    const view = filterWithFallback(opps, { ...indiaInternshipFilters, savedOnly: true }, ['in1'], null, 7);
+    assert.deepEqual(view.results.map(o => o.id), ['in1']);
+    assert.equal(view.fallbackCount, 0);
+  });
+
+  test('handles empty collections and satisfied minimums', () => {
+    const empty = filterWithFallback([], indiaInternshipFilters, [], null, 7);
+    assert.equal(empty.results.length, 0);
+    const few = filterWithFallback(opps.slice(0, 3), { type: 'all', region: 'all', q: '', savedOnly: false, sort: 'newest' }, [], null, 7);
+    assert.equal(few.results.length, 3); // nothing left to widen to
+    assert.equal(few.fallbackCount, 0);
   });
 });
 
