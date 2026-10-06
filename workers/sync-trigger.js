@@ -49,12 +49,31 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // Debug: reports which configuration keys the worker can SEE
+    // (booleans and non-secret config only — never token values).
+    if (url.pathname === '/api/debug') {
+      return new Response(JSON.stringify({
+        GH_PAT_set: Boolean(env.GH_PAT),
+        GH_PAT_length: env.GH_PAT ? String(env.GH_PAT).length : 0,
+        GH_REPO: env.GH_REPO || null,
+        GH_REF: env.GH_REF || null,
+        ALLOWED_ORIGINS: env.ALLOWED_ORIGINS || null,
+        SYNC_KEY_set: Boolean(env.SYNC_KEY),
+      }, null, 2), {
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+
     if (url.pathname !== '/api/sync') {
       return new Response('Not found', { status: 404, headers: cors });
     }
 
-    if (!env.GH_PAT || !env.GH_REPO) {
-      return new Response('Worker not configured: set GH_PAT and GH_REPO', {
+    const missing = [];
+    if (!env.GH_PAT) missing.push('GH_PAT');
+    if (!env.GH_REPO) missing.push('GH_REPO');
+    if (missing.length > 0) {
+      return new Response(`Worker not configured — missing: ${missing.join(', ')}`, {
         status: 500,
         headers: cors,
       });
