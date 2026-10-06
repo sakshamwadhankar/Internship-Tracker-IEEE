@@ -3285,7 +3285,11 @@ function bindEvents() {
   //  (If you ever deploy functions/ on Blaze, swap back to requestSync().)
   const GITHUB_SYNC_URL =
     'https://github.com/sakshamwadhankar/Internship-Tracker-IEEE/actions/workflows/sync-opportunities.yml';
-  const SYNC_TRIGGER_URL = import.meta.env.VITE_SYNC_TRIGGER_URL || '';
+  // Accept the bare worker URL or one already ending in /api/sync
+  const RAW_TRIGGER_URL = (import.meta.env.VITE_SYNC_TRIGGER_URL || '').trim();
+  const SYNC_TRIGGER_URL = RAW_TRIGGER_URL && !RAW_TRIGGER_URL.endsWith('/api/sync')
+    ? RAW_TRIGGER_URL.replace(/\/+$/, '') + '/api/sync'
+    : RAW_TRIGGER_URL;
   /** @type {number} */
   let lastSyncTriggerAt = 0;
 
@@ -3310,7 +3314,7 @@ function bindEvents() {
     } catch (err) {
       console.error('[PTracker] Sync trigger error:', err);
       lastSyncTriggerAt = 0;
-      showToast('Could not reach the sync service — try the GitHub Actions page.', 'error');
+      showToast('Could not reach the sync service — opening GitHub Actions instead.', 'error');
       window.open(GITHUB_SYNC_URL, '_blank', 'noopener');
     }
   };
