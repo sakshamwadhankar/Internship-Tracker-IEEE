@@ -2,8 +2,65 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Doc holds a userId field that must match the caller (create + update safe)
+    function ownsUserId(field) {
+      return signedIn()
+        && resource.data[field] == request.auth.uid
+        && request.resource.data[field] == request.auth.uid;
+    }
+
+    // Doc ID itself is the user's uid (user_preferences, user_profiles)
+    function ownsDocId() {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    // ─── Personal data: only the owner may touch their own docs ──
+    match /goals/{goalId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if ownsUserId('userId');
+    }
+
+    match /tasks/{taskId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if ownsUserId('userId');
+    }
+
+    match /subtasks/{subtaskId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if ownsUserId('userId');
+    }
+
+    match /user_preferences/{userId} {
+      allow read, write: if ownsDocId();
+    }
+
+    match /user_profiles/{userId} {
+      allow read, write: if ownsDocId();
+
+      // Saved/bookmarked opportunities live under the owner's profile
+      match /saved/{opportunityId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // ─── Shared listing data: readable by any signed-in user,
+    //     writable ONLY by the Cloud Functions (Admin SDK bypasses rules) ──
+    match /opportunities/{opportunityId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sync_meta/{sourceId} {
+      allow read: if signedIn();
+      allow write: if false;
     }
   }
 }

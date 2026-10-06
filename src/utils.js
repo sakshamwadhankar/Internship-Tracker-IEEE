@@ -275,6 +275,162 @@ export function computeTranslucencyValues(percent) {
   return { alpha, blurPx };
 }
 
+// ─── OPPORTUNITY MATCHING ───────────────────────────────
+
+/** @typedef {Object} Opportunity
+ * @property {string} id
+ * @property {string} title
+ * @property {string} company
+ * @property {string} [location]
+ * @property {string} [region] - 'india' | 'global'
+ * @property {string} [type] - 'internship' | 'fulltime'
+ * @property {string} [applyUrl]
+ * @property {string} [source]
+ * @property {string[]} [tags]
+ * @property {string} [description]
+ * @property {number} [postedAtMs]
+ */
+
+/** @typedef {import('./opportunities.js').UserProfile} UserProfile */
+
+/**
+ * Normalize a phrase into a lowercase token for matching
+ * @param {string} str
+ * @returns {string}
+ */
+function normToken(str) {
+  return String(str || '').toLowerCase().replace(/[^a-z0-9+#. ]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Score how well an opportunity matches a user profile (0-100).
+ * Weights: skills overlap 50, role/interest keywords 20, location 15,
+ * degree fit 10, recency 5. Pure function — used in UI and tests.
+ * @param {UserProfile|null|undefined} profile
+ * @param {Opportunity} opp
+ * @returns {{ score: number, matchedSkills: string[] }}
+ */
+export function scoreOpportunity(profile, opp) {
+  const p = profile || {};
+  const haystack = normToken([
+    opp.title, opp.company, (opp.tags || []).join(' '), opp.description, opp.location
+  ].join(' '));
+
+  // 1) Skills overlap — up to 50 (considers at most the first 6 skills)
+  const skills = (p.skills || []).map(s => String(s).trim()).filter(Boolean);
+  const considered = skills.slice(0, 6);
+  const matchedSkills = considered.filter(s => haystack.includes(normToken(s)));
+  const skillScore = considered.length > 0
+    ? 50 * matchedSkills.length / considered.length
+    : 0;
+
+  // 2) Role / interest keywords in the title — up to 20 (first 3 phrases)
+  const roles = [...(p.preferredRoles || []), ...(p.interests || [])].map(s => String(s).trim()).filter(Boolean);
+  const roleHits = roles.slice(0, 3).filter(r => normToken(opp.title || '').includes(normToken(r)));
+  const roleScore = roles.length > 0 ? 20 * roleHits.length / Math.min(roles.length, 3) : 0;
+
+  // 3) Location — up to 15 (7.5 neutral when no preference given)
+  const locs = (p.preferredLocations || []).map(s => String(s).trim()).filter(Boolean);
+  const oppLoc = normToken(opp.location || '');
+  let locationScore = 7.5;
+  if (locs.length > 0) {
+    const locHit = locs.some(l => {
+      const n = normToken(l);
+      return oppLoc.includes(n) || (normToken(l) === 'remote' && oppLoc.includes('remote'));
+    });
+    locationScore = locHit ? 15 : 0;
+  }
+
+  // 4) Degree fit — up to 10 (internships suit students graduating soon)
+  let degreeScore = 5;
+  const gradYear = parseInt(String(p.gradYear || ''), 10);
+  const thisYear = new Date().getFullYear();
+  if (opp.type === 'internship' && gradYear >= thisYear && gradYear <= thisYear + 2) {
+    degreeScore = 10;
+  } else if (p.degree && haystack.includes(normToken(String(p.degree)))) {
+    degreeScore = 10;
+  }
+
+  // 5) Recency — up to 5
+  let recencyScore = 0;
+  if (opp.postedAtMs) {
+    const ageDays = (Date.now() - opp.postedAtMs) / 86400000;
+    if (ageDays <= 7) recencyScore = 5;
+    else if (ageDays <= 21) recencyScore = 3;
+  }
+
+  const score = Math.round(skillScore + roleScore + locationScore + degreeScore + recencyScore);
+  return { score: Math.max(0, Math.min(100, score)), matchedSkills };
+}
+
+/**
+ * Filter and sort opportunities by the active UI filters.
+ * @param {Opportunity[]} opportunities
+ * @param {{ type: string, region: string, q: string, savedOnly: boolean, sort: string }} filters
+ * @param {string[]} [savedIds]
+ * @param {UserProfile|null} [profile]
+ * @returns {Opportunity[]}
+ */
+export function filterOpportunities(opportunities, filters, savedIds = [], profile = null) {
+  const f = filters || {};
+  let list = [...(opportunities || [])];
+
+  if (f.type === 'internship' || f.type === 'fulltime') {
+    list = list.filter(o => (o.type || 'fulltime') === f.type);
+  }
+  if (f.region === 'india' || f.region === 'global') {
+    list = list.filter(o => (o.region || 'global') === f.region);
+  }
+  if (f.savedOnly) {
+    list = list.filter(o => savedIds.includes(o.id));
+  }
+  const q = normToken(f.q || '');
+  if (q) {
+    list = list.filter(o =>
+      normToken(o.title).includes(q) ||
+      normToken(o.company).includes(q) ||
+      (o.tags || []).some(t => normToken(t).includes(q)) ||
+      normToken(o.location).includes(q)
+    );
+  }
+
+  if (f.sort === 'match' && profile) {
+    list.sort((a, b) =>
+      scoreOpportunity(profile, b).score - scoreOpportunity(profile, a).score ||
+      (b.postedAtMs || 0) - (a.postedAtMs || 0)
+    );
+  } else {
+    list.sort((a, b) => (b.postedAtMs || b.fetchedAtMs || 0) - (a.postedAtMs || a.fetchedAtMs || 0));
+  }
+  return list;
+}
+
+/**
+ * Format a timestamp (ms epoch, epoch seconds, or Firestore-ish {seconds})
+ * as a human "ago" label
+ * @param {number|{seconds?: number, toMillis?: Function}|null|undefined} input
+ * @returns {string}
+ */
+export function formatTimeAgo(input) {
+  let ms = 0;
+  if (typeof input === 'number') ms = input < 1e12 ? input * 1000 : input;
+  else if (input && typeof input.toMillis === 'function') ms = input.toMillis();
+  else if (input && typeof input.seconds === 'number') ms = input.seconds * 1000;
+
+  if (!ms) return '';
+  const diff = Date.now() - ms;
+  if (diff < 0) return 'just now';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
 
 
 
