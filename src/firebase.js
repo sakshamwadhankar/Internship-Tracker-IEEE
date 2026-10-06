@@ -45,20 +45,10 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 
-const resolveAuthDomain = () => {
-  if (typeof window !== 'undefined' && window.location.hostname) {
-    const host = window.location.hostname;
-    if (host.endsWith('.web.app') || host.endsWith('.firebaseapp.com')) {
-      return host;
-    }
-  }
-  return import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'ptracker-app-7117.firebaseapp.com';
-};
-
 /** @type {import('firebase/app').FirebaseOptions} */
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: resolveAuthDomain(),
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'ptracker-app-7117.firebaseapp.com',
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
