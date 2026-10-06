@@ -145,7 +145,7 @@ function renderGuideLogbooksTab({ pendingLogbooks, myTeams }) {
         </div>
         ${l.blockers ? `<div style="font-size: 0.82rem; color: var(--clr-danger);"><strong>Blockers:</strong> ${l.blockers}</div>` : ''}
         <div class="appr-actions" style="margin-top: 12px;">
-          <input type="text" class="input-remarks" placeholder="Enter guide remarks..." id="remarks-${l.id}" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 9999px; color: #FFF; width: 60%;" />
+          <input type="text" class="input-remarks" placeholder="Enter guide remarks..." id="remarks-${l.id}" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 9999px; color: #FFF;" />
           <button class="coord-btn primary sm btn-approve-logbook" data-log-id="${l.id}">Approve</button>
           <button class="coord-btn sm btn-request-changes-logbook" data-log-id="${l.id}">Request Changes</button>
         </div>

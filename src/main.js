@@ -626,6 +626,9 @@ function render() {
   const customBgStyle = state.customBgImage ? `style="background-image: url('${state.customBgImage}');"` : '';
   const customBgClass = state.customBgImage ? 'has-custom-bg' : '';
 
+  const firstName = state.user.displayName ? state.user.displayName.split(' ')[0] : (state.user.email ? state.user.email.split('@')[0] : 'there');
+  const avatarLetter = (state.user.displayName || state.user.email || 'U').charAt(0).toUpperCase();
+
   appEl.innerHTML = `
     <div class="studio-wrapper">
       <div class="studio-backdrop-accent"></div>
@@ -648,6 +651,17 @@ function render() {
           <button class="role-pill-btn ${state.activeRole === 'coordinator' ? 'active' : ''}" data-role="coordinator">Coordinator</button>
           <button class="role-pill-btn ${state.activeRole === 'guide' ? 'active' : ''}" data-role="guide">Guide</button>
           <button class="role-pill-btn ${state.activeRole === 'panel' ? 'active' : ''}" data-role="panel">Panel</button>
+        </div>
+        <div class="studio-header-actions">
+          <button class="nav-bar-btn" id="desktop-settings-btn" title="Settings">
+            ${icon('settings')}
+          </button>
+          <div class="user-capsule" id="desktop-user-capsule" style="padding: 4px 12px; min-height: 40px; cursor: pointer;" title="User Profile">
+            <div class="capsule-avatar" style="width: 28px; height: 28px; font-size: 0.75rem;">
+              ${state.user.photoURL ? `<img src="${state.user.photoURL}" alt="${firstName}" style="width:100%;height:100%;object-fit:cover;" referrerpolicy="no-referrer" />` : avatarLetter}
+            </div>
+            <span class="capsule-title" style="font-size: 0.82rem;">${firstName}</span>
+          </div>
         </div>
       </header>
 
@@ -2179,8 +2193,18 @@ function bindEvents() {
     }
   });
 
-  // Settings button
+  // Settings button (mobile & desktop)
   document.getElementById('nav-settings-btn')?.addEventListener('click', () => {
+    state.settingsOpen = true;
+    render();
+  });
+
+  document.getElementById('desktop-settings-btn')?.addEventListener('click', () => {
+    state.settingsOpen = true;
+    render();
+  });
+
+  document.getElementById('desktop-user-capsule')?.addEventListener('click', () => {
     state.settingsOpen = true;
     render();
   });

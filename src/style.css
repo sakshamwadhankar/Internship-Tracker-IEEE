@@ -126,13 +126,12 @@ button {
 .studio-wrapper {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
   min-height: 100vh;
   width: 100%;
-  padding: 24px 16px 40px;
-  background: radial-gradient(circle at 50% 20%, #171A19 0%, #0C0E0D 60%, #060707 100%);
+  padding: 0;
+  background: radial-gradient(circle at 50% 10%, #171A19 0%, #0C0E0D 50%, #060707 100%);
   position: relative;
+  overflow-x: hidden;
 }
 
 /* Ambient glow & backdrop art */
@@ -141,7 +140,7 @@ button {
   top: -100px;
   left: 50%;
   transform: translateX(-50%);
-  width: 700px;
+  width: 900px;
   height: 500px;
   background: radial-gradient(circle, rgba(255, 100, 32, 0.08) 0%, rgba(202, 215, 206, 0.04) 40%, transparent 70%);
   filter: blur(80px);
@@ -149,17 +148,23 @@ button {
   z-index: 0;
 }
 
-/* Top Switcher Bar (Desktop / Showcase navigation) */
+/* Top Switcher Bar (Desktop Full-Width Navigation) */
 .studio-header {
-  position: relative;
-  z-index: 10;
+  position: sticky;
+  top: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 440px;
-  margin-bottom: 16px;
-  padding: 0 4px;
+  max-width: 100%;
+  margin-bottom: 0;
+  padding: 14px 32px;
+  background: rgba(18, 20, 19, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-sizing: border-box;
 }
 
 .studio-logo {
@@ -168,7 +173,7 @@ button {
   gap: 8px;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
   letter-spacing: -0.02em;
   color: var(--text-primary-light);
 }
@@ -177,8 +182,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   color: var(--clr-orange);
 }
 
@@ -191,15 +196,15 @@ button {
   display: flex;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--clr-noir-border);
-  padding: 3px;
+  padding: 4px;
   border-radius: var(--radius-pill);
-  gap: 2px;
+  gap: 4px;
 }
 
 .studio-screen-btn {
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  padding: 5px 12px;
+  padding: 6px 16px;
   border-radius: var(--radius-pill);
   color: var(--text-secondary-light);
   transition: var(--trans-fast);
@@ -216,27 +221,27 @@ button {
 }
 
 /* ============================================================
-   The Mobile Phone Frame Container
+   Application Surface Container (Full Screen on Desktop)
    ============================================================ */
 .phone-shell {
   position: relative;
   z-index: 5;
   width: 100%;
-  max-width: 440px;
-  height: 860px;
-  max-height: calc(100vh - 40px);
-  min-height: 600px;
-  border-radius: var(--radius-shell);
-  overflow: hidden;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  max-width: 100%;
+  height: auto;
+  min-height: calc(100vh - 65px);
+  max-height: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
+  flex: 1;
   transition: background-color 0.4s ease;
   user-select: none;
 }
 
-
-/* Screen Themes based on the 3 screens in the user's reference image */
+/* Screen Themes */
 .phone-shell.theme-charcoal {
   background-color: var(--clr-noir);
   color: var(--text-primary-light);
@@ -275,12 +280,25 @@ button {
 }
 
 /* Mobile Top Action Bar */
+/* Mobile Top Action Bar — visible on mobile viewports only */
 .screen-nav-bar {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: space-between;
-  padding: 22px 24px 14px;
-  z-index: 20;
+  padding: 12px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  background: rgba(18, 20, 19, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 768px) {
+  .screen-nav-bar {
+    display: flex;
+  }
 }
 
 .nav-bar-btn {
@@ -315,9 +333,20 @@ button {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 6px 20px 100px;
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 24px 32px 110px;
+  box-sizing: border-box;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
+}
+
+@media (max-width: 768px) {
+  .screen-body {
+    padding: 12px 16px 100px;
+  }
 }
 
 /* ============================================================
@@ -1485,21 +1514,24 @@ button {
    BOTTOM DOCKED NAVIGATION BAR (FLOATING CAPSULE)
    ============================================================ */
 .bottom-dock-nav {
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  right: 20px;
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  min-width: 320px;
+  max-width: 460px;
   height: 64px;
-  background: rgba(24, 27, 25, 0.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(24, 27, 25, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--clr-noir-border);
   border-radius: var(--radius-pill);
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0 12px;
-  z-index: 30;
+  padding: 0 16px;
+  z-index: 1000;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
@@ -2120,24 +2152,28 @@ select.form-input-pill {
 }
 
 /* Responsive tweaks for direct mobile browsers */
-@media (max-width: 500px) {
+@media (max-width: 768px) {
   .studio-wrapper {
     padding: 0;
-    background: none;
-    min-height: 100dvh;
-    height: 100dvh;
+    background: #0C0E0D;
+    min-height: 100vh;
   }
   .studio-header {
-    display: none;
+    display: none !important;
   }
   .phone-shell {
+    width: 100%;
     max-width: 100%;
-    height: 100dvh;
-    max-height: 100dvh;
-    min-height: 100dvh;
+    min-height: 100vh;
     border-radius: 0;
     box-shadow: none;
   }
+}
+
+.studio-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 /* ============================================================
@@ -2544,13 +2580,17 @@ select.form-input-pill {
 /* Heatmap Table */
 .heatmap-table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.02);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .heatmap-table {
   width: 100%;
+  min-width: 520px;
   border-collapse: collapse;
 }
 
@@ -2715,6 +2755,12 @@ select.form-input-pill {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.appr-actions .input-remarks {
+  flex: 1 1 200px;
+  min-width: 0;
 }
 
 /* Focus Stopwatch & Pulsing Circle */
@@ -3023,5 +3069,259 @@ select.form-input-pill {
   font-weight: 800;
   color: #FFF;
   margin-bottom: 16px;
+}
+
+/* ============================================================
+   RESPONSIVE OPTIMIZATIONS FOR MOBILE & TABLET DEVICES
+   Prevents components from clipping or overflowing viewport
+   ============================================================ */
+
+@media (max-width: 768px) {
+  /* Coordinator & Dashboard Layout */
+  .coordinator-dashboard, .guide-dashboard, .panel-dashboard, .focus-dashboard, .journey-dashboard {
+    padding: 8px 0 90px;
+    gap: 16px;
+    width: 100%;
+  }
+
+  .coord-header-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .coord-actions-group {
+    width: 100%;
+  }
+
+  .coord-actions-group button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .coord-title {
+    font-size: 1.2rem;
+  }
+
+  /* Subtabs horizontal touch-scroll */
+  .coord-subtabs-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 6px;
+    scrollbar-width: none;
+    width: 100%;
+  }
+
+  .coord-subtabs-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .coord-subtab-btn {
+    flex-shrink: 0;
+  }
+
+  /* Allocation Table Rows Stacked on Mobile */
+  .alloc-table-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .alloc-table-row .team-col,
+  .alloc-table-row .pref-col,
+  .alloc-table-row .guide-col,
+  .alloc-table-row .action-col {
+    width: 100%;
+  }
+
+  .alloc-table-row .pref-col {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .alloc-table-row .action-col button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Review Schedule Rows Stacked on Mobile */
+  .review-schedule-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .review-schedule-row .rev-time-box {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .review-schedule-row .rev-team-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .review-schedule-row .rev-gate-col,
+  .review-schedule-row .rev-action-col {
+    width: 100%;
+  }
+
+  .review-schedule-row .rev-action-col button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Toolbars */
+  .alloc-toolbar, .rev-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .alloc-toolbar button, .rev-toolbar button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .rev-gate-explainer {
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+
+  /* Approvals Actions & Remarks */
+  .appr-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .appr-actions .input-remarks {
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  .appr-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .appr-details {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  /* Panel Layout & Rubrics */
+  .panel-layout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rubric-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .rubric-row .rubric-input {
+    align-self: flex-end;
+  }
+
+  /* Heatmap */
+  .heatmap-legend {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* Floating Bottom Dock on Mobile */
+  .bottom-dock-nav {
+    left: 14px;
+    right: 14px;
+    transform: none;
+    min-width: unset;
+    max-width: unset;
+    bottom: 14px;
+    height: 58px;
+    padding: 0 8px;
+  }
+
+  /* Route selector card */
+  .endpoint-code {
+    font-size: 1.5rem;
+  }
+
+  /* Focus timer */
+  .stopwatch-circle {
+    width: 190px;
+    height: 190px;
+  }
+
+  .stopwatch-time-display {
+    font-size: 2.3rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .radar-alerts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .room-members-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .capsule-row {
+    gap: 8px;
+  }
+
+  .user-capsule, .location-capsule {
+    padding: 6px 10px;
+    min-height: 46px;
+  }
+
+  .task-card-item {
+    padding: 14px 14px;
+    gap: 10px;
+  }
+
+  .task-time-big {
+    font-size: 0.95rem;
+  }
+
+  .task-card-title {
+    font-size: 0.88rem;
+  }
+
+  .dock-tab-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .dock-add-fab {
+    width: 44px;
+    height: 44px;
+  }
+
+  .override-modal-card {
+    width: 95%;
+    padding: 18px 16px;
+  }
 }
 
