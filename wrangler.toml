@@ -1,0 +1,17 @@
+# Cloudflare Worker config for the PTracker sync-trigger.
+# Deployed automatically by Cloudflare Workers Builds when you push to main.
+#
+# GH_PAT is a SECRET and must be added in the dashboard:
+#   Workers & Pages -> internship-tracker-ieee -> Settings ->
+#   Variables and Secrets -> Add -> Type: Secret, Name: GH_PAT
+#   (value = your GitHub fine-grained token with Actions: Read and write)
+
+name = "internship-tracker-ieee"
+main = "workers/sync-trigger.js"
+compatibility_date = "2026-10-06"
+workers_dev = true
+
+[vars]
+GH_REPO = "sakshamwadhankar/Internship-Tracker-IEEE"
+GH_REF = "main"
+ALLOWED_ORIGINS = "https://ptracker-app-7117.web.app,http://localhost:5173"
