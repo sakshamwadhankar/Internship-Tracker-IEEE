@@ -749,7 +749,10 @@ function render() {
             ${icon('tasks')}
           </button>
           <button class="dock-tab-btn ${state.currentScreen === 'journey' ? 'active' : ''}" data-nav="journey" title="Journey">
-            ${icon('goals')}
+            ${icon('users')}
+          </button>
+          <button class="dock-tab-btn ${state.currentScreen === 'focus' ? 'active' : ''}" data-nav="focus" title="Focus">
+            ${icon('timer')}
           </button>
           <button class="dock-add-fab" id="fab-add-btn" title="New Task / Goal">
             ${icon('plus')}
@@ -757,10 +760,10 @@ function render() {
           <button class="dock-tab-btn ${state.currentScreen === 'calendar' ? 'active' : ''}" data-nav="calendar" title="Calendar">
             ${icon('calendar')}
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'progress' ? 'active' : ''}" data-nav="progress" title="Progress">
+          <button class="dock-tab-btn ${state.currentScreen === 'progress' ? 'active' : ''}" data-nav="progress" title="Stats">
             ${icon('progress')}
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'opportunities' ? 'active' : ''}" data-nav="opportunities" title="Opportunities">
+          <button class="dock-tab-btn ${state.currentScreen === 'opportunities' ? 'active' : ''}" data-nav="opportunities" title="Jobs">
             ${icon('briefcase')}
           </button>
         </nav>
