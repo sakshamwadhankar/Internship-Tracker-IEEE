@@ -1355,14 +1355,22 @@ function renderOpportunitiesScreen() {
 
     <div class="opp-sync-info">
       <span
-        ${sync.failed > 0 ? `id="opp-sync-details-toggle" style="cursor:pointer;text-decoration:underline dotted;" title="Tap to see failed sources"` : ''}
+        id="opp-sync-details-toggle"
+        style="cursor:pointer;text-decoration:underline dotted;"
+        title="Tap to see per-source sync details"
       >${sync.label} · ${sync.sources} sources${sync.failed > 0 ? ` · ${sync.failed} failed` : ''}</span>
     </div>
-    ${state.showSyncErrors && sync.failed > 0 ? `
+    ${state.showSyncErrors ? `
       <div class="opp-sync-errors">
         ${Object.entries(state.syncMeta)
-          .filter(([, m]) => m.ok === false)
-          .map(([id, m]) => `<div class="opp-sync-error-item"><strong>${escapeHtml(id)}</strong> — ${escapeHtml((m.error || 'failed').slice(0, 120))}</div>`)
+          .sort(([, a], [, b]) => (a.ok === false ? -1 : 0) - (b.ok === false ? -1 : 0))
+          .map(([id, m]) => {
+            const status = m.ok === false
+              ? `<strong>failed</strong>`
+              : (m.skipped ? `skipped (${escapeHtml(m.skipped)})` : `${m.count ?? 0} listings`);
+            const err = m.ok === false ? ` — ${escapeHtml((m.error || 'error').slice(0, 100))}` : '';
+            return `<div class="opp-sync-error-item"><strong>${escapeHtml(id)}</strong>: ${status}${err}</div>`;
+          })
           .join('')}
       </div>
     ` : ''}

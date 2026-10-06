@@ -86,7 +86,14 @@ export async function runSync(sourceIds = null, options = {}) {
       for (const batch of chunk(jobs, BATCH_SIZE)) {
         const writer = db.bulkWriter();
         for (const job of batch) {
-          writer.set(db.collection('opportunities').doc(job.id), job, { merge: true });
+          // fetchedAt is the "last seen" stamp: the client's listing query
+          // sorts on it, and the prune step ages listings out by it. A doc
+          // missing this field is invisible to both.
+          writer.set(
+            db.collection('opportunities').doc(job.id),
+            { ...job, fetchedAt: FieldValue.serverTimestamp() },
+            { merge: true }
+          );
         }
         await writer.close();
         upserts += batch.length;
