@@ -101,6 +101,18 @@ import {
   approveByCoordinator,
   rejectInternship
 } from './modules/internship.js';
+import {
+  getLocalFriends,
+  saveLocalFriends,
+  addFriendToList,
+  removeFriendFromList,
+  searchStudents
+} from './modules/friends.js';
+import {
+  getLocalCodingProfiles,
+  saveLocalCodingProfiles,
+  syncAllCodingProfiles
+} from './modules/codingProfiles.js';
 
 
 // ─── App State ──────────────────────────────────────────
@@ -166,6 +178,20 @@ const state = {
     open: false,
     teamId: null,
     teamName: ''
+  },
+
+  /** @type {any[]} */
+  friends: [],
+  /** @type {any} */
+  codingProfiles: {},
+  /** @type {Record<string, any>} */
+  codingProfilesMap: {},
+  /** @type {Record<string, any>} */
+  livePresence: {},
+  codingProfilesModal: {
+    open: false,
+    loading: false,
+    error: null
   },
 
   // v2 Collections & Department Data
@@ -385,6 +411,13 @@ function startDataListeners(userId) {
     state.widgetTranslucency = cachedPrefs.widgetTranslucency;
   }
   applyWidgetTranslucency(state.widgetTranslucency);
+
+  // Load friends and coding profiles
+  state.friends = getLocalFriends(userId);
+  state.codingProfiles = getLocalCodingProfiles(userId);
+  if (state.codingProfiles && (state.codingProfiles.github || state.codingProfiles.leetcode || state.codingProfiles.hackerrank)) {
+    state.codingProfilesMap[userId] = state.codingProfiles;
+  }
 
   listenGoals(userId, (goals) => {
     state.goals = goals;
@@ -750,7 +783,10 @@ function render() {
             ${icon('tasks')}
           </button>
           <button class="dock-tab-btn ${state.currentScreen === 'journey' ? 'active' : ''}" data-nav="journey" title="Journey">
-            ${icon('goals')}
+            ${icon('users')}
+          </button>
+          <button class="dock-tab-btn ${state.currentScreen === 'focus' ? 'active' : ''}" data-nav="focus" title="Focus">
+            ${icon('timer')}
           </button>
           <button class="dock-add-fab" id="fab-add-btn" title="New Task / Goal">
             ${icon('plus')}
@@ -758,10 +794,10 @@ function render() {
           <button class="dock-tab-btn ${state.currentScreen === 'calendar' ? 'active' : ''}" data-nav="calendar" title="Calendar">
             ${icon('calendar')}
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'progress' ? 'active' : ''}" data-nav="progress" title="Progress">
+          <button class="dock-tab-btn ${state.currentScreen === 'progress' ? 'active' : ''}" data-nav="progress" title="Stats">
             ${icon('progress')}
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'opportunities' ? 'active' : ''}" data-nav="opportunities" title="Opportunities">
+          <button class="dock-tab-btn ${state.currentScreen === 'opportunities' ? 'active' : ''}" data-nav="opportunities" title="Jobs">
             ${icon('briefcase')}
           </button>
         </nav>
@@ -776,9 +812,89 @@ function render() {
     ${renderBgModal()}
     ${renderManualOverrideModal()}
     ${renderProfileModal()}
+    ${renderCodingProfilesModal()}
   `;
 
   bindEvents();
+}
+
+/**
+ * Render Coding Profiles Modal for connecting GitHub, LeetCode, and HackerRank
+ * @returns {string}
+ */
+function renderCodingProfilesModal() {
+  if (!state.codingProfilesModal.open) return '';
+  const prof = state.codingProfiles || {};
+
+  return `
+    <div class="override-modal-backdrop" id="coding-modal-overlay">
+      <div class="coding-modal-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h3 style="font-family: var(--font-display); font-size: 1.15rem; margin: 0; color: #FFF;">
+            Connect Coding Accounts
+          </h3>
+          <button id="coding-modal-close" class="nav-bar-btn" style="width: 32px; height: 32px;">
+            ${icon('close')}
+          </button>
+        </div>
+
+        <p style="font-size: 0.84rem; color: var(--text-secondary-light); margin-bottom: 18px; line-height: 1.45;">
+          Connect your GitHub, LeetCode, and HackerRank handles to share your real coding progress with teammates, mentor, and coordinator.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <label style="font-size: 0.78rem; font-weight: 700; color: #FFF; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              ${icon('github')} GitHub Username
+            </label>
+            <input type="text" id="input-github-user" class="form-input-pill" style="width: 100%; box-sizing: border-box;" placeholder="e.g. torvalds" value="${escapeAttr(prof.github || '')}" />
+            ${prof.githubStats ? `
+              <div style="font-size: 0.72rem; color: #2CD674; margin-top: 4px;">
+                ✓ Verified: ${prof.githubStats.publicRepos} public repos, ${prof.githubStats.followers} followers
+              </div>
+            ` : ''}
+          </div>
+
+          <div>
+            <label style="font-size: 0.78rem; font-weight: 700; color: #FFF; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              ${icon('leetcode')} LeetCode Username
+            </label>
+            <input type="text" id="input-leetcode-user" class="form-input-pill" style="width: 100%; box-sizing: border-box;" placeholder="e.g. neetcode" value="${escapeAttr(prof.leetcode || '')}" />
+            ${prof.leetcodeStats ? `
+              <div style="font-size: 0.72rem; color: #2CD674; margin-top: 4px;">
+                ✓ Verified: ${prof.leetcodeStats.totalSolved} solved (${prof.leetcodeStats.easySolved} easy, ${prof.leetcodeStats.mediumSolved} med, ${prof.leetcodeStats.hardSolved} hard)
+              </div>
+            ` : ''}
+          </div>
+
+          <div>
+            <label style="font-size: 0.78rem; font-weight: 700; color: #FFF; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              ${icon('hackerrank')} HackerRank Username
+            </label>
+            <input type="text" id="input-hackerrank-user" class="form-input-pill" style="width: 100%; box-sizing: border-box;" placeholder="e.g. hacker_pro" value="${escapeAttr(prof.hackerrank || '')}" />
+            ${prof.hackerrankStats ? `
+              <div style="font-size: 0.72rem; color: #2CD674; margin-top: 4px;">
+                ✓ Verified: ${prof.hackerrankStats.totalStars} stars across ${prof.hackerrankStats.badgesCount} domain badges
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        ${state.codingProfilesModal.error ? `
+          <div style="color: var(--clr-danger); font-size: 0.8rem; margin-top: 12px; background: rgba(255, 69, 58, 0.1); padding: 8px 12px; border-radius: 8px;">
+            ${escapeHtml(state.codingProfilesModal.error)}
+          </div>
+        ` : ''}
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px;">
+          <button id="coding-modal-cancel" class="coord-btn secondary sm">Cancel</button>
+          <button id="coding-modal-save" class="coord-btn primary sm" ${state.codingProfilesModal.loading ? 'disabled' : ''}>
+            ${state.codingProfilesModal.loading ? 'Syncing...' : `${icon('sync')} Sync & Save Profiles`}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 /**
@@ -847,6 +963,7 @@ function renderCurrentScreenContent() {
       focusSessions: state.focusSessions,
       internships: state.internships,
       activeSubTab: state.coordinatorSubTab,
+      codingProfilesMap: state.codingProfilesMap,
       showToast
     });
   }
@@ -860,7 +977,8 @@ function renderCurrentScreenContent() {
       documents: state.documents,
       internships: state.internships,
       focusSessions: state.focusSessions,
-      activeSubTab: state.guideSubTab
+      activeSubTab: state.guideSubTab,
+      codingProfilesMap: state.codingProfilesMap
     });
   }
 
@@ -883,7 +1001,13 @@ function renderCurrentScreenContent() {
       logbooks: state.logbooks,
       documents: state.documents,
       internships: state.internships,
-      activeSubTab: state.journeySubTab
+      activeSubTab: state.journeySubTab,
+      allUsers: state.allUsers,
+      friends: state.friends,
+      currentUser: state.user,
+      codingProfiles: state.codingProfiles,
+      codingProfilesMap: state.codingProfilesMap,
+      livePresence: state.livePresence
     });
     case 'focus': return renderFocusView({
       userId: state.user?.uid || 'guest',
@@ -892,7 +1016,10 @@ function renderCurrentScreenContent() {
       dailyPlans: state.dailyPlans,
       allUsers: state.allUsers,
       activeSessionState: state.activeFocusTimer,
-      activeSubTab: state.focusSubTab
+      activeSubTab: state.focusSubTab,
+      friends: state.friends,
+      codingProfilesMap: state.codingProfilesMap,
+      livePresence: state.livePresence
     });
     case 'calendar': return renderCalendarScreen();
     case 'progress': return renderProgressScreen();
@@ -2300,6 +2427,9 @@ function bindEvents() {
 
   // Focus: Stopwatch Toggle
   document.getElementById('btn-toggle-stopwatch')?.addEventListener('click', () => {
+    const currentUid = state.user?.uid || 'guest';
+    const activeSub = state.focusSubjects.find(s => s.id === state.activeFocusTimer.activeSubjectId) || state.focusSubjects[0];
+
     if (state.activeFocusTimer.isRunning) {
       // Pause timer
       if (state.activeFocusTimer.timerInterval) {
@@ -2307,10 +2437,17 @@ function bindEvents() {
         state.activeFocusTimer.timerInterval = null;
       }
       state.activeFocusTimer.isRunning = false;
+      state.livePresence[currentUid] = {
+        isRunning: false,
+        elapsedSeconds: state.activeFocusTimer.elapsedSeconds,
+        subjectName: activeSub?.name || 'FYP',
+        subjectColor: activeSub?.colorCode || '#FF6420'
+      };
+
       const durationMin = Math.max(1, Math.round(state.activeFocusTimer.elapsedSeconds / 60));
       state.focusSessions.unshift({
         id: `sess_${Date.now()}`,
-        uid: state.user?.uid || 'guest',
+        uid: currentUid,
         teamId: 't1',
         subjectId: state.activeFocusTimer.activeSubjectId || 'sub_1',
         durationMin,
@@ -2321,15 +2458,28 @@ function bindEvents() {
     } else {
       // Start timer
       state.activeFocusTimer.isRunning = true;
+      state.livePresence[currentUid] = {
+        isRunning: true,
+        elapsedSeconds: state.activeFocusTimer.elapsedSeconds,
+        startedAtMillis: Date.now() - (state.activeFocusTimer.elapsedSeconds * 1000),
+        subjectName: activeSub?.name || 'FYP',
+        subjectColor: activeSub?.colorCode || '#FF6420'
+      };
+
       state.activeFocusTimer.timerInterval = setInterval(() => {
         state.activeFocusTimer.elapsedSeconds++;
+        const total = state.activeFocusTimer.elapsedSeconds;
+        const h = String(Math.floor(total / 3600)).padStart(2, '0');
+        const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+        const s = String(total % 60).padStart(2, '0');
+
         const display = document.querySelector('.stopwatch-time-display');
         if (display) {
-          const total = state.activeFocusTimer.elapsedSeconds;
-          const h = String(Math.floor(total / 3600)).padStart(2, '0');
-          const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
-          const s = String(total % 60).padStart(2, '0');
           display.textContent = `${h}:${m}:${s}`;
+        }
+        const roomTimer = document.querySelector('.room-live-timer');
+        if (roomTimer) {
+          roomTimer.textContent = `${h}:${m}:${s}`;
         }
       }, 1000);
     }
@@ -2341,9 +2491,124 @@ function bindEvents() {
       clearInterval(state.activeFocusTimer.timerInterval);
       state.activeFocusTimer.timerInterval = null;
     }
+    const currentUid = state.user?.uid || 'guest';
     state.activeFocusTimer.isRunning = false;
     state.activeFocusTimer.elapsedSeconds = 0;
+    delete state.livePresence[currentUid];
     render();
+  });
+
+  // Coding Accounts Modal handlers
+  document.getElementById('btn-open-coding-modal')?.addEventListener('click', () => {
+    state.codingProfilesModal.open = true;
+    state.codingProfilesModal.error = null;
+    render();
+  });
+
+  document.getElementById('coding-modal-close')?.addEventListener('click', () => {
+    state.codingProfilesModal.open = false;
+    render();
+  });
+
+  document.getElementById('coding-modal-cancel')?.addEventListener('click', () => {
+    state.codingProfilesModal.open = false;
+    render();
+  });
+
+  document.getElementById('coding-modal-save')?.addEventListener('click', async () => {
+    const ghInput = /** @type {HTMLInputElement|null} */ (document.getElementById('input-github-user'));
+    const lcInput = /** @type {HTMLInputElement|null} */ (document.getElementById('input-leetcode-user'));
+    const hrInput = /** @type {HTMLInputElement|null} */ (document.getElementById('input-hackerrank-user'));
+
+    const handles = {
+      github: ghInput?.value.trim() || '',
+      leetcode: lcInput?.value.trim() || '',
+      hackerrank: hrInput?.value.trim() || ''
+    };
+
+    state.codingProfilesModal.loading = true;
+    state.codingProfilesModal.error = null;
+    render();
+
+    try {
+      const { profiles, errors } = await syncAllCodingProfiles(handles);
+      const uid = state.user?.uid || 'm1';
+      state.codingProfiles = profiles;
+      state.codingProfilesMap[uid] = profiles;
+      saveLocalCodingProfiles(uid, profiles);
+
+      if (errors.length > 0) {
+        showToast(`Synced with warnings: ${errors.map(e => `${e.platform}: ${e.error}`).join('; ')}`, 'warning');
+      } else {
+        showToast('Coding accounts successfully verified & connected!', 'success');
+      }
+      state.codingProfilesModal.open = false;
+    } catch (err) {
+      console.error('[CodingProfiles] Sync error:', err);
+      state.codingProfilesModal.error = /** @type {Error} */ (err).message || 'Failed to sync profiles';
+    } finally {
+      state.codingProfilesModal.loading = false;
+      render();
+    }
+  });
+
+  // Friend actions
+  document.getElementById('btn-room-add-friend')?.addEventListener('click', () => {
+    state.currentScreen = 'journey';
+    state.journeySubTab = 'friends';
+    render();
+  });
+
+  document.getElementById('btn-submit-add-friend')?.addEventListener('click', () => {
+    const input = /** @type {HTMLInputElement|null} */ (document.getElementById('input-friend-search'));
+    const val = input?.value.trim();
+    if (!val) {
+      showToast('Enter student name or email', 'error');
+      return;
+    }
+    const currentUid = state.user?.uid || 'guest';
+    try {
+      const newFriend = {
+        id: `peer_${Date.now()}`,
+        name: val.includes('@') ? val.split('@')[0] : val,
+        email: val.includes('@') ? val : `${val.toLowerCase().replace(/\s+/g, '')}@student.edu`,
+        teamName: 'Team Project'
+      };
+      state.friends = addFriendToList(currentUid, newFriend, state.friends);
+      showToast(`Added ${newFriend.name} as a study buddy!`, 'success');
+      render();
+    } catch (err) {
+      showToast(/** @type {Error} */ (err).message, 'error');
+    }
+  });
+
+  document.querySelectorAll('.btn-add-candidate').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-student-id');
+      const name = btn.getAttribute('data-student-name') || 'Peer';
+      if (!id) return;
+      const currentUid = state.user?.uid || 'guest';
+      try {
+        state.friends = addFriendToList(currentUid, { id, name }, state.friends);
+        showToast(`Added ${name} to your friend list!`, 'success');
+        render();
+      } catch (err) {
+        showToast(/** @type {Error} */ (err).message, 'error');
+      }
+    });
+  });
+
+  document.querySelectorAll('.btn-remove-friend').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const friendId = btn.getAttribute('data-friend-id');
+      if (!friendId) return;
+      if (confirm('Remove this friend from your study list?')) {
+        const currentUid = state.user?.uid || 'guest';
+        state.friends = removeFriendFromList(currentUid, friendId, state.friends);
+        showToast('Friend removed');
+        render();
+      }
+    });
   });
 
   document.getElementById('select-focus-subject')?.addEventListener('change', (e) => {

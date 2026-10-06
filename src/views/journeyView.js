@@ -25,7 +25,13 @@ export function renderJourneyView({
   logbooks = [],
   documents = [],
   internships = [],
-  activeSubTab = 'hub'
+  activeSubTab = 'hub',
+  allUsers = [],
+  friends = [],
+  currentUser = null,
+  codingProfiles = {},
+  codingProfilesMap = {},
+  livePresence = {}
 }) {
   const teamAlloc = myTeam ? allocations.find(a => a.teamId === myTeam.id) : null;
   const assignedGuide = teamAlloc?.assignedGuideUid ? guides.find(g => g.uid === teamAlloc.assignedGuideUid) : null;
@@ -34,6 +40,9 @@ export function renderJourneyView({
     <div class="coord-subtabs-strip">
       <button class="coord-subtab-btn ${activeSubTab === 'hub' ? 'active' : ''}" data-journey-tab="hub">
         ${icon('users')} Project Hub
+      </button>
+      <button class="coord-subtab-btn ${activeSubTab === 'friends' ? 'active' : ''}" data-journey-tab="friends">
+        ${icon('users')} Friends (${friends.length})
       </button>
       <button class="coord-subtab-btn ${activeSubTab === 'prefs' ? 'active' : ''}" data-journey-tab="prefs">
         ${icon('swap')} Guide Prefs
@@ -53,7 +62,24 @@ export function renderJourneyView({
   let contentHtml = '';
 
   if (activeSubTab === 'hub') {
-    contentHtml = renderHubTab({ myTeam, assignedGuide, teamAlloc });
+    contentHtml = renderHubTab({
+      myTeam,
+      assignedGuide,
+      teamAlloc,
+      allUsers,
+      currentUser,
+      codingProfiles,
+      codingProfilesMap,
+      livePresence
+    });
+  } else if (activeSubTab === 'friends') {
+    contentHtml = renderFriendsTab({
+      friends,
+      allUsers,
+      currentUserId: currentUser?.uid || 'guest',
+      codingProfilesMap,
+      livePresence
+    });
   } else if (activeSubTab === 'prefs') {
     contentHtml = renderPrefsTab({ guides, teamAlloc });
   } else if (activeSubTab === 'logbook') {
@@ -82,7 +108,16 @@ export function renderJourneyView({
   `;
 }
 
-function renderHubTab({ myTeam, assignedGuide, teamAlloc }) {
+function renderHubTab({
+  myTeam,
+  assignedGuide,
+  teamAlloc,
+  allUsers = [],
+  currentUser = null,
+  codingProfiles = {},
+  codingProfilesMap = {},
+  livePresence = {}
+}) {
   if (!myTeam) {
     return `
       <div class="approval-item-card">
@@ -98,9 +133,66 @@ function renderHubTab({ myTeam, assignedGuide, teamAlloc }) {
     `;
   }
 
+  // Teammates list
+  const memberUids = myTeam.memberUids || ['m1'];
+  const teamMembers = memberUids.map(uid => {
+    if (currentUser && uid === currentUser.uid) {
+      return { uid, name: currentUser.displayName || 'You', isCurrent: true };
+    }
+    const found = allUsers.find(u => u.uid === uid);
+    return found || { uid, name: `Student (${uid})` };
+  });
+
+  const memberCardsHtml = teamMembers.map(m => {
+    const isCurrent = m.isCurrent || (currentUser && m.uid === currentUser.uid);
+    const prof = isCurrent ? codingProfiles : (codingProfilesMap[m.uid] || {});
+    const presence = livePresence[m.uid] || {};
+
+    return `
+      <div class="approval-item-card" style="margin-bottom: 12px; background: rgba(255,255,255,0.03);">
+        <div class="appr-top" style="align-items: center;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="room-avatar" style="width: 34px; height: 34px; font-size: 0.8rem;">
+              ${m.name.charAt(0)}
+            </div>
+            <div>
+              <strong style="color: #FFF; font-size: 0.95rem;">${m.name}</strong>
+              ${isCurrent ? '<span class="pref-pill top" style="font-size: 0.65rem; margin-left: 6px;">You</span>' : ''}
+              <div style="font-size: 0.75rem; color: var(--text-secondary-light);">
+                ${presence.isRunning ? '<span style="color: #2CD674;">● Focusing Now</span>' : 'Idle'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Teammate Connected Profiles Badges -->
+        <div class="room-coding-badges" style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+          ${prof.githubStats ? `
+            <a href="${prof.githubStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip gh" title="${prof.githubStats.publicRepos} GitHub Repos">
+              ${icon('github')} <span>${prof.githubStats.publicRepos} repos · ${prof.githubStats.followers} flw</span>
+            </a>
+          ` : (prof.github ? `<span class="platform-chip gh">${icon('github')} <span>@${prof.github}</span></span>` : '<span style="font-size: 0.72rem; color: var(--text-secondary-light); opacity: 0.6;">No GitHub connected</span>')}
+
+          ${prof.leetcodeStats ? `
+            <a href="${prof.leetcodeStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip lc" title="${prof.leetcodeStats.totalSolved} Solved">
+              ${icon('leetcode')} <span>${prof.leetcodeStats.totalSolved} solved (${prof.leetcodeStats.mediumSolved} med)</span>
+            </a>
+          ` : (prof.leetcode ? `<span class="platform-chip lc">${icon('leetcode')} <span>@${prof.leetcode}</span></span>` : '')}
+
+          ${prof.hackerrankStats ? `
+            <a href="${prof.hackerrankStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip hr" title="${prof.hackerrankStats.totalStars} Stars">
+              ${icon('hackerrank')} <span>${prof.hackerrankStats.totalStars}★ (${prof.hackerrankStats.badgesCount} badges)</span>
+            </a>
+          ` : (prof.hackerrank ? `<span class="platform-chip hr">${icon('hackerrank')} <span>@${prof.hackerrank}</span></span>` : '')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
   return `
     <div class="hub-tab-section">
-      <div class="coord-guide-card">
+      <!-- Team Card -->
+      <div class="coord-guide-card" style="margin-bottom: 20px;">
         <div class="guide-card-top">
           <span class="guide-name">${myTeam.name}</span>
           <span class="pref-pill top">Invite Code: ${myTeam.inviteCode || 'PTRK26'}</span>
@@ -117,9 +209,144 @@ function renderHubTab({ myTeam, assignedGuide, teamAlloc }) {
           </div>
         ` : ''}
       </div>
+
+      <!-- Teammates & Coding Badges -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <div class="coord-section-title" style="margin: 0;">Teammates & Coding Activity</div>
+        <button id="btn-open-coding-modal" class="coord-btn primary sm">
+          ${icon('github')} Connect My Coding Profiles
+        </button>
+      </div>
+
+      <div class="team-members-list" style="margin-bottom: 24px;">
+        ${memberCardsHtml}
+      </div>
     </div>
   `;
 }
+
+function renderFriendsTab({
+  friends = [],
+  allUsers = [],
+  currentUserId,
+  codingProfilesMap = {},
+  livePresence = {}
+}) {
+  const friendCards = friends.map(f => {
+    const presence = livePresence[f.id] || {};
+    const isFocusing = Boolean(presence.isRunning);
+    const coding = codingProfilesMap[f.id] || f.codingProfiles || {};
+
+    return `
+      <div class="approval-item-card" style="margin-bottom: 12px;">
+        <div class="appr-top" style="align-items: center;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="room-avatar" style="${isFocusing ? 'border: 2px solid #2CD674;' : ''}">
+              ${f.name.charAt(0)}
+            </div>
+            <div>
+              <strong style="color: #FFF; font-size: 1rem;">${f.name}</strong>
+              <div style="font-size: 0.78rem; color: var(--text-secondary-light); margin-top: 2px;">
+                ${f.email || ''} ${f.teamName ? `· ${f.teamName}` : ''}
+              </div>
+              <div style="margin-top: 4px; font-size: 0.8rem;">
+                ${isFocusing ? `
+                  <span style="color: #2CD674; font-weight: 700;">● Focusing on ${presence.subjectName || 'Studies'}</span>
+                ` : `
+                  <span style="color: var(--text-secondary-light);">Idle</span>
+                `}
+              </div>
+            </div>
+          </div>
+
+          <button class="coord-btn secondary sm btn-remove-friend" data-friend-id="${f.id}" title="Remove Friend">
+            ${icon('trash')} Remove
+          </button>
+        </div>
+
+        <!-- Friend Coding Badges -->
+        <div class="room-coding-badges" style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+          ${coding.githubStats ? `
+            <a href="${coding.githubStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip gh" title="${coding.githubStats.publicRepos} GitHub Repos">
+              ${icon('github')} <span>${coding.githubStats.publicRepos} repos</span>
+            </a>
+          ` : (coding.github ? `<span class="platform-chip gh">${icon('github')} <span>@${coding.github}</span></span>` : '')}
+
+          ${coding.leetcodeStats ? `
+            <a href="${coding.leetcodeStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip lc" title="${coding.leetcodeStats.totalSolved} Solved">
+              ${icon('leetcode')} <span>${coding.leetcodeStats.totalSolved} solved</span>
+            </a>
+          ` : (coding.leetcode ? `<span class="platform-chip lc">${icon('leetcode')} <span>@${coding.leetcode}</span></span>` : '')}
+
+          ${coding.hackerrankStats ? `
+            <a href="${coding.hackerrankStats.profileUrl}" target="_blank" rel="noopener" class="platform-chip hr" title="${coding.hackerrankStats.totalStars} Stars">
+              ${icon('hackerrank')} <span>${coding.hackerrankStats.totalStars}★</span>
+            </a>
+          ` : (coding.hackerrank ? `<span class="platform-chip hr">${icon('hackerrank')} <span>@${coding.hackerrank}</span></span>` : '')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Find candidate peers to add
+  const friendIds = new Set(friends.map(f => f.id));
+  const candidateStudents = allUsers.filter(u => u.uid !== currentUserId && !friendIds.has(u.uid));
+
+  const candidatesHtml = candidateStudents.map(c => `
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 6px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div class="room-avatar" style="width: 28px; height: 28px; font-size: 0.75rem;">
+          ${c.name.charAt(0)}
+        </div>
+        <div>
+          <strong style="color: #FFF; font-size: 0.88rem;">${c.name}</strong>
+          <span style="font-size: 0.75rem; color: var(--text-secondary-light); margin-left: 6px;">(Team ${c.teamId || 'Open'})</span>
+        </div>
+      </div>
+      <button class="coord-btn primary sm btn-add-candidate" data-student-id="${c.uid}" data-student-name="${c.name}">
+        ${icon('plus')} Add
+      </button>
+    </div>
+  `).join('');
+
+  return `
+    <div class="friends-tab-section">
+      <!-- Add Friend Box -->
+      <div class="approval-item-card" style="margin-bottom: 20px;">
+        <h3 style="font-family: var(--font-display); color: #FFF; margin-bottom: 6px;">Add a Student Peer</h3>
+        <p style="font-size: 0.84rem; color: var(--text-secondary-light); margin-bottom: 14px;">
+          Connect with friends across teams to track mutual live focus sessions and coding achievements.
+        </p>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+          <input type="text" id="input-friend-search" placeholder="Enter student name or email..." style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); padding: 10px 16px; border-radius: 9999px; color: #FFF; font-size: 0.88rem;" />
+          <button id="btn-submit-add-friend" class="coord-btn primary sm">${icon('plus')} Add Friend</button>
+        </div>
+
+        ${candidateStudents.length > 0 ? `
+          <div style="margin-top: 10px;">
+            <span style="font-size: 0.76rem; text-transform: uppercase; color: var(--text-secondary-light); letter-spacing: 0.05em; display: block; margin-bottom: 8px;">
+              Suggested Peers
+            </span>
+            ${candidatesHtml}
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Friends List -->
+      <div class="coord-section-title">My Friends (${friends.length})</div>
+      <div class="friends-list-container">
+        ${friends.length > 0 ? friendCards : `
+          <div class="empty-state-modern">
+            <p class="empty-state-title">No Friends Added Yet</p>
+            <p class="empty-state-text">Add peers from your department to share live study timers and compare coding milestones.</p>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
 
 function renderPrefsTab({ guides, teamAlloc }) {
   const guideRows = guides.map((g, idx) => `

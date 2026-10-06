@@ -58,6 +58,7 @@ export function renderCoordinatorView({
   focusSessions = [],
   internships = [],
   activeSubTab = 'allocation',
+  codingProfilesMap = {},
   showToast
 }) {
   const stats = calculateSatisfactionStats(allocations, teams, guides);
@@ -82,7 +83,7 @@ export function renderCoordinatorView({
   let contentHtml = '';
 
   if (activeSubTab === 'allocation') {
-    contentHtml = renderAllocationTab({ teams, guides, allocations, stats, preLockedPairs });
+    contentHtml = renderAllocationTab({ teams, guides, allocations, stats, preLockedPairs, codingProfilesMap });
   } else if (activeSubTab === 'reviews') {
     contentHtml = renderReviewsTab({ teams, reviews, panels, rooms, timeSlots });
   } else if (activeSubTab === 'heatmap') {
@@ -114,7 +115,7 @@ export function renderCoordinatorView({
   `;
 }
 
-function renderAllocationTab({ teams, guides, allocations, stats, preLockedPairs }) {
+function renderAllocationTab({ teams, guides, allocations, stats, preLockedPairs, codingProfilesMap = {} }) {
   const guideMap = new Map(guides.map(g => [g.uid, g]));
 
   const guideLoadCards = guides.map(g => {
@@ -146,11 +147,23 @@ function renderAllocationTab({ teams, guides, allocations, stats, preLockedPairs
     const isManual = alloc?.assignedBy === 'manual';
     const isLocked = alloc?.isPreLocked;
 
+    const teamProfiles = (t.memberUids || []).map(uid => codingProfilesMap[uid]).filter(Boolean);
+    const totalRepos = teamProfiles.reduce((sum, p) => sum + (p.githubStats?.publicRepos || 0), 0);
+    const totalSolved = teamProfiles.reduce((sum, p) => sum + (p.leetcodeStats?.totalSolved || 0), 0);
+    const totalStars = teamProfiles.reduce((sum, p) => sum + (p.hackerrankStats?.totalStars || 0), 0);
+
     return `
       <div class="alloc-table-row">
         <div class="team-col">
           <strong>${t.name}</strong>
           <span class="team-meta-domain">${t.domain || 'General'} · ${t.memberUids?.length || 1} members</span>
+          ${totalRepos > 0 || totalSolved > 0 || totalStars > 0 ? `
+            <div style="font-size: 0.72rem; color: var(--clr-orange); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap;">
+              ${totalRepos > 0 ? `<span>${icon('github')} ${totalRepos} repos</span>` : ''}
+              ${totalSolved > 0 ? `<span>${icon('leetcode')} ${totalSolved} solved</span>` : ''}
+              ${totalStars > 0 ? `<span>${icon('hackerrank')} ${totalStars}★</span>` : ''}
+            </div>
+          ` : ''}
         </div>
         <div class="pref-col">
           <span class="pref-pill ${alloc?.preferenceSatisfied === '1st' ? 'top' : ''}">
