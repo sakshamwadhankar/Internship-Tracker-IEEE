@@ -1519,10 +1519,10 @@ button {
   left: 50%;
   transform: translateX(-50%);
   width: auto;
-  min-width: 320px;
-  max-width: 520px;
-  height: 64px;
-  background: rgba(24, 27, 25, 0.92);
+  min-width: 380px;
+  max-width: 620px;
+  height: 66px;
+  background: rgba(24, 27, 25, 0.94);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--clr-noir-border);
@@ -1531,7 +1531,7 @@ button {
   align-items: center;
   justify-content: space-around;
   padding: 0 16px;
-  gap: 4px;
+  gap: 6px;
   z-index: 1000;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
@@ -1541,16 +1541,38 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
   color: var(--text-secondary-light);
   transition: var(--trans-fast);
   position: relative;
+  gap: 2px;
+  padding: 4px 2px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.dock-tab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+}
+
+.dock-tab-label {
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: inherit;
+  transition: color 0.15s ease;
 }
 
 .dock-tab-btn:hover {
   color: var(--text-primary-light);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .dock-tab-btn.active {
@@ -1558,10 +1580,16 @@ button {
   background: var(--clr-noir-surface);
 }
 
+.dock-tab-btn.active .dock-tab-label {
+  color: var(--clr-orange);
+  font-weight: 700;
+}
+
 .dock-tab-btn.active::after {
   content: '';
   position: absolute;
-  bottom: 4px;
+  top: 4px;
+  right: 6px;
   width: 4px;
   height: 4px;
   border-radius: 50%;
@@ -3308,14 +3336,26 @@ select.form-input-pill {
 
   /* Floating Bottom Dock on Mobile */
   .bottom-dock-nav {
-    left: 14px;
-    right: 14px;
+    left: 8px;
+    right: 8px;
     transform: none;
     min-width: unset;
     max-width: unset;
-    bottom: 14px;
-    height: 58px;
-    padding: 0 8px;
+    bottom: 10px;
+    height: 60px;
+    padding: 0 4px;
+    gap: 2px;
+  }
+
+  .dock-tab-btn {
+    width: 44px;
+    height: 48px;
+    padding: 2px 1px;
+    border-radius: 10px;
+  }
+
+  .dock-tab-label {
+    font-size: 0.58rem;
   }
 
   /* Route selector card */

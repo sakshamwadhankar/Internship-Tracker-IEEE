@@ -503,6 +503,7 @@ function showToast(message, type = 'success') {
  * @param {string|null} [taskId=null]
  */
 function navigateToScreen(screen, goalId = null, taskId = null) {
+  state.activeRole = 'student';
   state.currentScreen = screen;
   if (goalId !== null) state.selectedGoalId = goalId;
   if (taskId !== null) state.selectedTaskId = taskId;
@@ -778,27 +779,33 @@ function render() {
         </div>
 
         <!-- Floating Bottom Navigation Capsule -->
-        <nav class="bottom-dock-nav">
-          <button class="dock-tab-btn ${state.currentScreen === 'schedule' ? 'active' : ''}" data-nav="schedule" title="Schedule">
-            ${icon('tasks')}
+        <nav class="bottom-dock-nav" aria-label="Bottom Navigation">
+          <button class="dock-tab-btn ${state.activeRole === 'student' && state.currentScreen === 'schedule' ? 'active' : ''}" data-nav="schedule" title="Schedule">
+            <span class="dock-tab-icon">${icon('tasks')}</span>
+            <span class="dock-tab-label">Tasks</span>
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'journey' ? 'active' : ''}" data-nav="journey" title="Journey">
-            ${icon('users')}
+          <button class="dock-tab-btn ${state.activeRole === 'student' && state.currentScreen === 'journey' ? 'active' : ''}" data-nav="journey" title="Journey">
+            <span class="dock-tab-icon">${icon('users')}</span>
+            <span class="dock-tab-label">Journey</span>
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'focus' ? 'active' : ''}" data-nav="focus" title="Focus">
-            ${icon('timer')}
+          <button class="dock-tab-btn ${state.activeRole === 'student' && state.currentScreen === 'focus' ? 'active' : ''}" data-nav="focus" title="Focus Mode">
+            <span class="dock-tab-icon">${icon('timer')}</span>
+            <span class="dock-tab-label">Focus</span>
           </button>
           <button class="dock-add-fab" id="fab-add-btn" title="New Task / Goal">
             ${icon('plus')}
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'calendar' ? 'active' : ''}" data-nav="calendar" title="Calendar">
-            ${icon('calendar')}
+          <button class="dock-tab-btn ${state.activeRole === 'student' && state.currentScreen === 'calendar' ? 'active' : ''}" data-nav="calendar" title="Calendar">
+            <span class="dock-tab-icon">${icon('calendar')}</span>
+            <span class="dock-tab-label">Calendar</span>
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'progress' ? 'active' : ''}" data-nav="progress" title="Stats">
-            ${icon('progress')}
+          <button class="dock-tab-btn ${state.activeRole === 'student' && state.currentScreen === 'progress' ? 'active' : ''}" data-nav="progress" title="Stats">
+            <span class="dock-tab-icon">${icon('progress')}</span>
+            <span class="dock-tab-label">Stats</span>
           </button>
-          <button class="dock-tab-btn ${state.currentScreen === 'opportunities' ? 'active' : ''}" data-nav="opportunities" title="Jobs">
-            ${icon('briefcase')}
+          <button class="dock-tab-btn ${state.activeRole === 'student' && state.currentScreen === 'opportunities' ? 'active' : ''}" data-nav="opportunities" title="Jobs">
+            <span class="dock-tab-icon">${icon('briefcase')}</span>
+            <span class="dock-tab-label">Jobs</span>
           </button>
         </nav>
       </div>
